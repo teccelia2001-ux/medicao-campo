@@ -518,9 +518,13 @@
       <small class="cat">${esc(grupo)}</small>
       <div class="rapidos">${itens.map(([cod, rot, dep = DEP_RAPIDOS]) => {
         const lancados = p.itens.filter((i) => i.codigo === cod && i.departamento === dep);
-        const qtd = lancados.reduce((t, i) => t + M.numero(i.quantidade), 0);
+        const soma = (ops) => lancados.filter((i) => ops.includes(i.operacao)).reduce((t, i) => t + M.numero(i.quantidade), 0);
+        const inst = soma(["INSTALAR", "EXECUTAR"]);
+        const ret = soma(["RETIRAR"]);
+        const selos = (inst ? `<b class="rapido-qtd q-ins" title="Instalado">${M.fmtQtd(inst)}</b>` : "")
+          + (ret ? `<b class="rapido-qtd q-ret" title="Retirado">${M.fmtQtd(ret)}</b>` : "");
         return `<button type="button" class="rapido${lancados.length ? " rapido-usado" : ""}" data-acao="rapido" data-chave="${esc(`${dep}|${cod}`)}" data-rotulo="${esc(rot)}">
-          ${esc(rot)}${lancados.length ? `<b class="rapido-qtd">${M.fmtQtd(qtd)}</b>` : ""}</button>`;
+          ${esc(rot)}${selos ? `<span class="rapido-qtds">${selos}</span>` : ""}</button>`;
       }).join("")}</div>
     </div>`).join("");
   }
@@ -535,11 +539,11 @@
       if (!itens.length) return "";
       return `<section class="bloco">
         <h2 class="secao secao-${op.toLowerCase()}"><span>${SECAO[op]} · ${itens.length}</span><span>${M.fmtMoeda(M.soma(itens, M.valorItem))}</span></h2>
-        ${itens.map((i) => `<div class="cartao item">
-          <div class="item-topo"><div class="item-texto"><b>${esc(nomeNaTela(i))}</b> <small class="dep">${esc(i.codigo)}</small></div>
-            <button type="button" class="remover" data-acao="remover-item" data-sid="${i.sid}" aria-label="Remover">×</button></div>
-          <div class="item-base">${campoQtd(i.quantidade, `data-qtd-item="${i.sid}" aria-label="Quantidade"`)}
-            <b class="item-valor" id="valor-${i.sid}">${M.fmtMoeda(M.valorItem(i))}</b></div>
+        ${itens.map((i) => `<div class="cartao item item-linha">
+          <div class="item-nome" title="${esc(i.descricao)}"><b>${esc(nomeNaTela(i))}</b><small>${esc(i.codigo)}</small></div>
+          ${campoQtd(i.quantidade, `data-qtd-item="${i.sid}" aria-label="Quantidade de ${esc(nomeNaTela(i))}"`)}
+          <b class="item-valor" id="valor-${i.sid}">${M.fmtMoeda(M.valorItem(i))}</b>
+          <button type="button" class="remover" data-acao="remover-item" data-sid="${i.sid}" aria-label="Remover">×</button>
         </div>`).join("")}
       </section>`;
     }).join("");
@@ -1211,6 +1215,8 @@
       salvarAgora();
       return;
     }
+    // quantidade mudada na lista: atualiza os números verde/vermelho dos botões
+    if (p && t.dataset.qtdItem) return render();
     if (p && t.id === "p-nome") {
       if (!p.nome.trim()) p.nome = proximoNome(estado.obra);
       salvarAgora();
