@@ -576,3 +576,4 @@ a.botao { text-decoration: none; }
 }
 .link-ajustes { white-space: nowrap; }
 @media (max-width: 400px) { .link-ajustes span { display: none; } .link-ajustes { font-size: 18px !important; } }
+@media (min-width: 900px) { .campo-pesquisa input { max-width: 520px; } }

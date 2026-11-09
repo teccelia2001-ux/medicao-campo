@@ -404,7 +404,15 @@
   function telaObra() {
     const o = estado.obra;
     const t = M.totaisObra(o);
-    const pontos = o.pontos.map((p) => {
+    // pesquisa do ponto: nome, observação ou serviço lançado (código, descrição ou nome curto)
+    const termos = normalizar(estado.filtroPonto || "").split(/\s+/).filter(Boolean);
+    const achados = termos.length
+      ? o.pontos.filter((p) => {
+        const texto = normalizar([p.nome, p.obs, ...p.itens.flatMap((i) => [i.codigo, i.descricao, nomeNaTela(i)])].join(" "));
+        return termos.every((x) => texto.includes(x));
+      })
+      : o.pontos;
+    const pontos = achados.map((p) => {
       const tp = M.totaisPonto(p);
       return `<button type="button" class="cartao ponto-item" data-acao="abrir-ponto" data-id="${p.id}">
         <div class="linha-topo"><b class="ponto-nome">${esc(p.nome)}</b><b class="valor">${M.fmtMoeda(tp.valor)}</b></div>
@@ -426,8 +434,11 @@
       ${o.local || o.municipio || o.equipe ? `<p class="sub">${esc([o.local, o.municipio, o.equipe].filter(Boolean).join(" · "))}</p>` : ""}
       ${soLeitura(o) ? "" : `<button type="button" class="botao botao-grande" data-acao="novo-ponto">+ Novo ponto <small>${esc(proximoNome(o))}</small></button>`}
       <section class="bloco">
-        <h2>Pontos da obra</h2>
-        ${pontos ? `<div class="grade-pontos">${pontos}</div>` : `<p class="vazio">Nenhum ponto ainda. Cada poste ou trecho é um ponto (P1, P2...).</p>`}
+        <h2>Pontos da obra ${termos.length ? `<small class="sub-inline">(${achados.length} de ${o.pontos.length})</small>` : ""}</h2>
+        ${o.pontos.length ? `<label class="campo campo-pesquisa"><input id="filtro-ponto" type="search" value="${esc(estado.filtroPonto || "")}" placeholder="Pesquisar ponto: P3, observação ou serviço (ex.: poste, 62297)" autocomplete="off"></label>` : ""}
+        ${pontos ? `<div class="grade-pontos">${pontos}</div>`
+          : o.pontos.length ? `<p class="vazio">Nenhum ponto encontrado.</p>`
+            : `<p class="vazio">Nenhum ponto ainda. Cada poste ou trecho é um ponto (P1, P2...).</p>`}
       </section>
       <section class="bloco acoes-obra">
         <button type="button" class="botao botao-perigo" data-acao="excluir-obra">${soLeitura(o) ? "Tirar deste celular" : "Excluir obra"}</button>
@@ -1018,6 +1029,7 @@
           }
         }
         estado.obra = obra;
+        estado.filtroPonto = ""; // obra nova, pesquisa limpa
         return irPara("obra");
       }
       case "editar-obra": return irPara("obra-form");
@@ -1127,6 +1139,15 @@
       t.className = !t.value ? "" : obraValida(t.value) ? "valido" : "invalido";
       document.getElementById("dica-numero").textContent =
         t.value && !obraValida(t.value) ? `Tem ${t.value.length} dígitos. Precisa de 8 ou 10.` : "";
+      return;
+    }
+    if (t.id === "filtro-ponto") {
+      estado.filtroPonto = t.value;
+      const foco = t.selectionStart;
+      render();
+      const novo = document.getElementById("filtro-ponto");
+      novo.focus();
+      novo.setSelectionRange(foco, foco);
       return;
     }
     if (t.id === "filtro-obra") {
