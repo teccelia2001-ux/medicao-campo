@@ -24,6 +24,9 @@
   const estado = {
     perfil: null,
     obras: null, // linhas de medicao_obras_lista
+    usuarios: null, // medicao_supervisores (administrador)
+    telaUsuarios: false,
+    senhaDe: null, // usuário com o campo de nova senha aberto
     filtro: { busca: "", supervisor: "", cidade: "", de: "", ate: "" },
     ordem: { campo: "atualizada_em", desc: true },
     aberta: null, // obra completa aberta na gaveta
@@ -148,6 +151,59 @@
     estado.gerando = false;
   }
 
+
+  // ------------------------------------------------------------------ usuários (administrador)
+  const FALTA_SQL = "Falta rodar o supabase/03_usuarios.sql no SQL Editor do Supabase.";
+  const traduzir = (e) => (e.status === 404 || /could not find the function/i.test(e.message) ? FALTA_SQL : e.message);
+
+  async function carregarUsuarios() {
+    try {
+      estado.usuarios = await Nuvem.supervisores();
+    } catch (e) {
+      estado.usuarios = [];
+      avisar(traduzir(e), "erro");
+    }
+    render();
+  }
+
+  function usuariosHtml() {
+    if (!estado.telaUsuarios) return "";
+    const eu = estado.perfil?.user_id;
+    const obrasDe = (id) => (estado.obras || []).filter((o) => o.supervisor_id === id).length;
+    const lista = estado.usuarios === null ? `<p class="vazio">Carregando…</p>`
+      : estado.usuarios.map((u) => `<div class="usuario${u.ativo ? "" : " usuario-inativo"}">
+        <div class="usuario-dados">
+          <input class="usuario-nome" value="${esc(u.nome)}" data-u-nome="${u.user_id}" aria-label="Nome de ${esc(u.email)}">
+          <small>${esc(u.email)} · ${obrasDe(u.user_id)} ${obrasDe(u.user_id) === 1 ? "obra" : "obras"}${u.user_id === eu ? " · você" : ""}</small>
+        </div>
+        <label class="chave"><input type="checkbox" data-u-ativo="${u.user_id}" ${u.ativo ? "checked" : ""} ${u.user_id === eu ? "disabled" : ""}> Ativo</label>
+        <label class="chave"><input type="checkbox" data-u-admin="${u.user_id}" ${u.admin ? "checked" : ""} ${u.user_id === eu ? "disabled" : ""}> Administrador</label>
+        ${estado.senhaDe === u.user_id
+          ? `<form class="nova-senha" data-senha="${u.user_id}"><input type="password" id="nova-senha" minlength="6" placeholder="Nova senha (6+)" autocomplete="new-password" required><button class="mini">Salvar</button><button type="button" class="mini" data-acao="cancelar-senha">Cancelar</button></form>`
+          : `<button type="button" class="mini" data-acao="abrir-senha" data-id="${u.user_id}">Trocar senha</button>`}
+      </div>`).join("");
+    return `<div class="fundo" data-acao="fechar-usuarios">
+      <aside class="gaveta" data-parar>
+        <div class="gaveta-topo"><h2>Usuários e acessos</h2><span class="espaco"></span>
+          <button type="button" class="fechar" data-acao="fechar-usuarios" aria-label="Fechar">×</button></div>
+        <div class="gaveta-corpo">
+          <form class="novo-usuario" id="form-usuario">
+            <b>Novo usuário</b>
+            <div class="novo-campos">
+              <label>Nome <input id="u-nome" required placeholder="Nome que sai na medição"></label>
+              <label>E-mail <input id="u-email" type="email" required autocomplete="off"></label>
+              <label>Senha <input id="u-senha" type="password" minlength="6" required autocomplete="new-password" placeholder="6 ou mais"></label>
+              <label class="chave"><input type="checkbox" id="u-admin"> Administrador</label>
+              <button class="botao" id="bt-usuario">Criar usuário</button>
+            </div>
+            <small class="dica">O usuário entra no app e no painel com esse e-mail e senha. Administrador também cria usuários e muda acessos. Desativado não entra mais e não vê nada.</small>
+          </form>
+          <div class="cartao">${lista || `<p class="vazio">Nenhum usuário.</p>`}</div>
+        </div>
+      </aside>
+    </div>`;
+  }
+
   // ------------------------------------------------------------------ telas
   function telaEntrar() {
     return `<div class="entrar-pagina"><form class="entrar" id="form-entrar">
@@ -215,6 +271,7 @@
         <h1>Painel de medições de campo</h1>
         <span class="espaco"></span>
         <span class="quem">${esc(estado.perfil?.nome || "")}</span>
+        ${estado.perfil?.admin ? `<button type="button" class="link" data-acao="usuarios">👥 Usuários</button>` : ""}
         <a class="link" href="./">Abrir o app</a>
         <button type="button" class="link" data-acao="sair">Sair</button>
       </header>
@@ -249,7 +306,8 @@
           </section>
         </div>
       </main>
-      ${gavetaHtml()}`;
+      ${gavetaHtml()}
+      ${usuariosHtml()}`;
   }
 
   function gavetaHtml() {
@@ -311,6 +369,8 @@
     }
     const busca = document.activeElement?.id === "f-busca" ? document.activeElement.selectionStart : null;
     const rolagem = document.querySelector(".gaveta")?.scrollTop;
+    // não refaz a tela enquanto o administrador digita no formulário de usuário
+    if (document.activeElement?.closest?.("#form-usuario, .nova-senha")) return;
     $p.innerHTML = telaPainel();
     if (busca != null) {
       const el = document.getElementById("f-busca");
@@ -354,17 +414,54 @@
     if (linha) return abrir(linha.dataset.abrir);
     const acao = e.target.closest("[data-acao]");
     if (!acao) return;
-    if (acao.dataset.acao === "fechar" && e.target.closest("[data-parar]") && !e.target.closest(".fechar")) return;
+    if (["fechar", "fechar-usuarios"].includes(acao.dataset.acao) && e.target.closest("[data-parar]") && !e.target.closest(".fechar")) return;
     switch (acao.dataset.acao) {
       case "fechar":
         estado.aberta = null;
         return render();
       case "sair": return sair();
+      case "usuarios":
+        estado.telaUsuarios = true;
+        estado.usuarios = null;
+        render();
+        return carregarUsuarios();
+      case "fechar-usuarios":
+        estado.telaUsuarios = false;
+        estado.senhaDe = null;
+        return render();
+      case "abrir-senha":
+        estado.senhaDe = acao.dataset.id;
+        render();
+        return document.getElementById("nova-senha")?.focus();
+      case "cancelar-senha":
+        estado.senhaDe = null;
+        return render();
       case "atualizar": return carregar(true);
       case "limpar":
         estado.filtro = { busca: "", supervisor: "", cidade: "", de: "", ate: "" };
         return render();
       default:
+    }
+  });
+
+  // nome, ativo e administrador de cada usuário
+  $p.addEventListener("change", async (e) => {
+    const t = e.target;
+    const id = t.dataset.uNome || t.dataset.uAtivo || t.dataset.uAdmin;
+    if (!id) return;
+    const campos = t.dataset.uNome ? { nome: t.value.trim().toUpperCase() } : t.dataset.uAtivo ? { ativo: t.checked } : { admin: t.checked };
+    if (campos.nome === "") return avisar("O nome não pode ficar vazio.", "erro");
+    try {
+      await Nuvem.alterarSupervisor(id, campos);
+      const u = estado.usuarios.find((x) => x.user_id === id);
+      Object.assign(u, campos);
+      avisar(t.dataset.uAtivo ? (t.checked ? "Acesso liberado." : "Acesso desativado.") : t.dataset.uAdmin ? "Nível de acesso alterado." : "Nome alterado.");
+      t.blur();
+      render();
+      carregar(); // o nome do supervisor aparece nas obras
+    } catch (err) {
+      avisar(traduzir(err), "erro");
+      carregarUsuarios();
     }
   });
 
@@ -384,6 +481,38 @@
   });
 
   $p.addEventListener("submit", async (e) => {
+    if (e.target.id === "form-usuario") {
+      e.preventDefault();
+      const bt = document.getElementById("bt-usuario");
+      bt.disabled = true;
+      bt.textContent = "Criando…";
+      const nome = document.getElementById("u-nome").value.trim();
+      try {
+        await Nuvem.criarUsuario(document.getElementById("u-email").value.trim(), document.getElementById("u-senha").value, nome,
+          document.getElementById("u-admin").checked);
+        avisar(`Usuário ${nome.toUpperCase()} criado. Já pode entrar no app.`);
+        document.activeElement?.blur();
+        return carregarUsuarios();
+      } catch (err) {
+        avisar(traduzir(err), "erro");
+        bt.disabled = false;
+        bt.textContent = "Criar usuário";
+      }
+      return;
+    }
+    if (e.target.dataset.senha) {
+      e.preventDefault();
+      try {
+        await Nuvem.trocarSenha(e.target.dataset.senha, document.getElementById("nova-senha").value);
+        estado.senhaDe = null;
+        document.activeElement?.blur();
+        avisar("Senha trocada.");
+        render();
+      } catch (err) {
+        avisar(traduzir(err), "erro");
+      }
+      return;
+    }
     if (e.target.id !== "form-entrar") return;
     e.preventDefault();
     const bt = document.getElementById("bt-entrar");

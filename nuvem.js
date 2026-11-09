@@ -135,6 +135,11 @@
   const supervisores = () => chamar("/rest/v1/medicao_supervisores?select=*&order=nome");
   const alterarSupervisor = (id, campos) =>
     chamar(`/rest/v1/medicao_supervisores?user_id=eq.${id}`, { metodo: "PATCH", corpo: campos, cabecalhos: { Prefer: "return=minimal" } });
+  // funções do banco (supabase/03_usuarios.sql): só o administrador consegue
+  const criarUsuario = (email, senha, nome, admin) =>
+    chamar("/rest/v1/rpc/medicao_criar_usuario", { metodo: "POST", corpo: { p_email: email, p_senha: senha, p_nome: nome, p_admin: admin } });
+  const trocarSenha = (userId, senha) =>
+    chamar("/rest/v1/rpc/medicao_trocar_senha", { metodo: "POST", corpo: { p_user_id: userId, p_senha: senha } });
 
   // ---------------------------------------------------------------- obras
   const listarObras = () => chamar("/rest/v1/medicao_obras_lista?select=*&order=atualizada_em.desc&limit=500");
@@ -200,7 +205,7 @@
   }
 
   window.Nuvem = {
-    configurada, ErroNuvem, lerSessao, entrar, sair, meuPerfil, catalogo, supervisores, alterarSupervisor,
+    configurada, ErroNuvem, lerSessao, entrar, sair, meuPerfil, catalogo, supervisores, alterarSupervisor, criarUsuario, trocarSenha,
     listarObras, baixarObra, apagarObra, enviarObra, baixarFoto, listarFotos, apagarFotos,
   };
 })();

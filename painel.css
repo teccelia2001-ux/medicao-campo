@@ -169,3 +169,22 @@ tbody tr.aberta { background: #ffecec; }
   .gaveta { max-height: 100vh; height: 100%; border-radius: 0; }
   .gaveta-topo { border-radius: 0; }
 }
+
+/* usuários e acessos */
+.novo-usuario { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border: 1px solid var(--borda); border-radius: 12px; background: #fff; }
+.novo-campos { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+.novo-campos label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; color: #334155; flex: 1 1 180px; }
+.novo-campos input:not([type="checkbox"]) { min-height: 40px; padding: 8px 10px; border: 1px solid var(--borda-campo); border-radius: 9px; font: inherit; font-size: 14px; }
+.novo-campos .chave { flex: 0 0 auto; }
+.dica { color: var(--suave); }
+.chave { display: inline-flex !important; flex-direction: row !important; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; white-space: nowrap; }
+.chave input { width: 18px; height: 18px; accent-color: var(--vermelho); }
+.usuario { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; padding: 12px 16px; border-bottom: 1px solid #eef2f7; }
+.usuario-inativo { background: #f8fafc; }
+.usuario-inativo .usuario-nome { color: var(--suave); text-decoration: line-through; }
+.usuario-dados { flex: 1 1 260px; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.usuario-dados small { color: var(--suave); }
+.usuario-nome { min-height: 36px; padding: 6px 10px; border: 1px solid transparent; border-radius: 8px; background: transparent; font: inherit; font-weight: 700; }
+.usuario-nome:hover, .usuario-nome:focus { border-color: var(--borda-campo); background: #fff; outline: 0; }
+.nova-senha { display: flex; gap: 6px; }
+.nova-senha input { min-height: 32px; padding: 4px 8px; border: 1px solid var(--borda-campo); border-radius: 8px; font: inherit; }
