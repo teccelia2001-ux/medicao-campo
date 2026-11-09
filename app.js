@@ -492,19 +492,20 @@
     ["Aterramento", [["60006", "ATERR POSTE"], ["60005", "ATERR CPREDE"]]],
     ["Iluminação pública", [["60108", "IP<1,5"], ["60111", "IP>1,5"], ["60113", "RELÉ IP"]]],
     ["Ramal", [["60085", "R CONCÊNTRICO"], ["60087", "R MULTIPLEX"], ["60153", "R SUBTERRÂNEO"], ["64135", "CP REDE"]]],
-    ["Poda", [["60131", "PODA P"], ["60133", "PODA M"]]],
+    // poda pelo catálogo da P&LF (o código existe também na LM)
+    ["Poda", [["60131", "PODA P", "P&LF"], ["60133", "PODA M", "P&LF"]]],
   ];
-  const DEP_RAPIDOS = "C&M (LM)";
-  const NOME_CURTO = new Map(RAPIDOS.flatMap(([, itens]) => itens.map(([cod, rot]) => [`${DEP_RAPIDOS}|${cod}`, rot])));
+  const DEP_RAPIDOS = "C&M (LM)"; // departamento de quem não diz outro
+  const NOME_CURTO = new Map(RAPIDOS.flatMap(([, itens]) => itens.map(([cod, rot, dep = DEP_RAPIDOS]) => [`${dep}|${cod}`, rot])));
   const nomeNaTela = (i) => NOME_CURTO.get(`${i.departamento}|${i.codigo}`) || i.descricao;
 
   function rapidosHtml(p) {
     return RAPIDOS.map(([grupo, itens]) => `<div class="rapidos-grupo">
       <small class="cat">${esc(grupo)}</small>
-      <div class="rapidos">${itens.map(([cod, rot]) => {
-        const lancados = p.itens.filter((i) => i.codigo === cod && i.departamento === DEP_RAPIDOS);
+      <div class="rapidos">${itens.map(([cod, rot, dep = DEP_RAPIDOS]) => {
+        const lancados = p.itens.filter((i) => i.codigo === cod && i.departamento === dep);
         const qtd = lancados.reduce((t, i) => t + M.numero(i.quantidade), 0);
-        return `<button type="button" class="rapido${lancados.length ? " rapido-usado" : ""}" data-acao="rapido" data-chave="${esc(`${DEP_RAPIDOS}|${cod}`)}" data-rotulo="${esc(rot)}">
+        return `<button type="button" class="rapido${lancados.length ? " rapido-usado" : ""}" data-acao="rapido" data-chave="${esc(`${dep}|${cod}`)}" data-rotulo="${esc(rot)}">
           ${esc(rot)}${lancados.length ? `<b class="rapido-qtd">${M.fmtQtd(qtd)}</b>` : ""}</button>`;
       }).join("")}</div>
     </div>`).join("");
