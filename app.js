@@ -63,7 +63,8 @@
   }
   async function salvarAgora() {
     clearTimeout(tempoSalvar);
-    if (!estado.obra || soLeitura(estado.obra)) return;
+    // obra nova só existe depois do botão "Criar obra"
+    if (!estado.obra || soLeitura(estado.obra) || !estado.obra.criada_em) return;
     try {
       estado.obra.dono = true;
       await Banco.salvarObra(estado.obra);
@@ -282,7 +283,7 @@
     const locais = new Set(estado.obras.map((o) => o.id));
     const meu = estado.perfil?.user_id;
     const doBanco = (estado.remotas || [])
-      .filter((r) => !locais.has(r.id) && (estado.filtro === "todas" || r.supervisor_id === meu))
+      .filter((r) => !locais.has(r.id) && r.supervisor_id === meu)
       .map((r) => `<div class="cartao obra-item">
         <div class="linha-topo"><span class="chip-obra chip-obra-banco"><small>OBRA</small><b>${esc(r.numero)}</b></span><b class="valor">${M.fmtMoeda(Number(r.total))}</b></div>
         <small class="sub">${esc([r.local, r.municipio].filter(Boolean).join(" · "))}</small>
@@ -306,13 +307,12 @@
       </section>
       ${consultas.length ? `<section class="bloco"><h2>Abertas para consulta</h2>${consultas.map(cartao).join("")}</section>` : ""}
       <section class="bloco">
-        <div class="linha-topo"><h2>No banco</h2><button type="button" class="link" data-acao="atualizar-lista">⟳ Atualizar</button></div>
-        <div class="abas-filtro">
-          <button type="button" class="${estado.filtro === "minhas" ? "ativa" : ""}" data-acao="filtro" data-f="minhas">Minhas</button>
-          <button type="button" class="${estado.filtro === "todas" ? "ativa" : ""}" data-acao="filtro" data-f="todas">Todos os supervisores</button>
-        </div>
+        <button type="button" class="botao botao-claro" data-acao="mostrar-banco">
+          ${estado.bancoAberto ? "▲ Esconder minhas obras no banco" : `▼ Mostrar minhas obras no banco${estado.remotas ? ` (${(estado.remotas || []).filter((r) => !locais.has(r.id) && r.supervisor_id === meu).length})` : ""}`}
+        </button>
+        ${!estado.bancoAberto ? "" : `<div class="linha-topo"><small class="sub">Obras suas que estão no banco e não neste celular.</small><button type="button" class="link" data-acao="atualizar-lista">⟳ Atualizar</button></div>
         ${estado.remotas === null ? `<p class="vazio">${estado.online ? "Carregando…" : "Sem internet."}</p>`
-          : doBanco || `<p class="vazio">Nenhuma outra obra no banco${estado.filtro === "minhas" ? " sua" : ""}.</p>`}
+          : doBanco || `<p class="vazio">Nenhuma outra obra sua no banco.</p>`}`}
       </section>
     </div>`;
   }
@@ -377,14 +377,8 @@
           <input id="f-numero" value="${esc(o.numero)}" inputMode="numeric" maxlength="10" placeholder="8 ou 10 dígitos" class="${!o.numero ? "" : obraValida(o.numero) ? "valido" : "invalido"}">
           <small class="dica-erro" id="dica-numero">${o.numero && !obraValida(o.numero) ? `Tem ${o.numero.length} dígitos. Precisa de 8 ou 10.` : ""}</small>
         </label>
-        <label class="campo"><span>Local / endereço <small>(se tiver)</small></span>
-          <input id="f-local" value="${esc(o.local)}" placeholder="Rua, comunidade, sítio...">
-        </label>
-        <label class="campo"><span>Município <small>(se tiver)</small></span>
+        <label class="campo"><span>Cidade <small>(se tiver)</small></span>
           <input id="f-municipio" value="${esc(o.municipio)}">
-        </label>
-        <label class="campo"><span>Equipe executora <small>(se tiver)</small></span>
-          <input id="f-equipe" value="${esc(o.equipe)}" placeholder="Ex.: CONSTRUÇÃO 10">
         </label>
         <label class="campo"><span>Observação <small>(se tiver)</small></span>
           <textarea id="f-obs" rows="2">${esc(o.obs)}</textarea>
@@ -403,7 +397,7 @@
       const tp = M.totaisPonto(p);
       return `<button type="button" class="cartao ponto-item" data-acao="abrir-ponto" data-id="${p.id}">
         <div class="linha-topo"><b class="ponto-nome">${esc(p.nome)}</b><b class="valor">${M.fmtMoeda(tp.valor)}</b></div>
-        <small class="sub">${M.fmtDia(p.dia)} · ${plural(p.itens.length, "serviço", "serviços")} · ${p.fotos.length ? "📷 " + p.fotos.length : "sem foto"}${p.gps ? " · 📍" : ""}</small>
+        <small class="sub">${plural(p.itens.length, "serviço", "serviços")} · ${p.fotos.length ? "📷 " + p.fotos.length : "sem foto"}${p.gps ? " · 📍" : ""}</small>
         ${p.obs ? `<small class="sub">${esc(p.obs)}</small>` : ""}
       </button>`;
     }).join("");
@@ -483,6 +477,39 @@
     </div>`;
   }
 
+  // lista pré-definida para o supervisor só tocar (nome curto só na tela; a medição sai com a descrição do catálogo)
+  const RAPIDOS = [
+    ["Poste e base", [["61600", "CAVA PERFURATRIZ"], ["62261", "CAVA LAVANCA"], ["62177", "CALÇADA"], ["62045", "DEFENSA"], ["62297", "POSTE"]]],
+    ["Estruturas MT", [["62184", "CE1"], ["62186", "CE2"], ["62190", "CE3"], ["62195", "CE4"], ["62007", "LOSANGULAR"],
+      ["60007", "B1/N1"], ["60067", "B2/N2"], ["60080", "B3/N3"], ["60096", "B4/N4"]]],
+    ["Cruzetas", [["64197", "1N"], ["64201", "2N"]]],
+    ["Estruturas BT", [["60072", "SI1"], ["62205", "SI3"], ["62211", "SI4"], ["62192", "RA2"], ["64073", "RABICHO"], ["64223", "V1"]]],
+    ["Transformador", [["62193", "<=40KVA"], ["62183", ">40<=112,5KVA"], ["68125", ">112,5KVA"], ["68000", "COMPONENTE"]]],
+    ["Chaves e para-raios", [["62069", "FACA"], ["60139", "FUSIVEL"], ["62033", "CARTUCHO"], ["60129", "PRBT"], ["62272", "PRMT"]]],
+    ["Emendas e telecom", [["62124", "EMENDA BT"], ["62125", "EMENDA MT"], ["62080", "INTERNET"]]],
+    ["Isoladores", [["62091", "PILAR"], ["62093", "POLIMERICO"], ["60038", "BASTÃO"]]],
+    ["Conectores", [["64097", "AMPACTINHO"], ["62152", "CUNHA"], ["60044", "COMPRESSÃO"], ["60054", "PERFURANTE"], ["60040", "ESTRIBO"], ["64079", "GLV"]]],
+    ["Aterramento", [["60006", "ATERR POSTE"], ["60005", "ATERR CPREDE"]]],
+    ["Iluminação pública", [["60108", "IP<1,5"], ["60111", "IP>1,5"], ["60113", "RELÉ IP"]]],
+    ["Ramal", [["60085", "R CONCÊNTRICO"], ["60087", "R MULTIPLEX"], ["60153", "R SUBTERRÂNEO"], ["64135", "CP REDE"]]],
+    ["Poda", [["60131", "PODA P"], ["60133", "PODA M"]]],
+  ];
+  const DEP_RAPIDOS = "C&M (LM)";
+  const NOME_CURTO = new Map(RAPIDOS.flatMap(([, itens]) => itens.map(([cod, rot]) => [`${DEP_RAPIDOS}|${cod}`, rot])));
+  const nomeNaTela = (i) => NOME_CURTO.get(`${i.departamento}|${i.codigo}`) || i.descricao;
+
+  function rapidosHtml(p) {
+    return RAPIDOS.map(([grupo, itens]) => `<div class="rapidos-grupo">
+      <small class="cat">${esc(grupo)}</small>
+      <div class="rapidos">${itens.map(([cod, rot]) => {
+        const lancados = p.itens.filter((i) => i.codigo === cod && i.departamento === DEP_RAPIDOS);
+        const qtd = lancados.reduce((t, i) => t + M.numero(i.quantidade), 0);
+        return `<button type="button" class="rapido${lancados.length ? " rapido-usado" : ""}" data-acao="rapido" data-chave="${esc(`${DEP_RAPIDOS}|${cod}`)}" data-rotulo="${esc(rot)}">
+          ${esc(rot)}${lancados.length ? `<b class="rapido-qtd">${M.fmtQtd(qtd)}</b>` : ""}</button>`;
+      }).join("")}</div>
+    </div>`).join("");
+  }
+
   function telaPonto() {
     const o = estado.obra;
     const p = ponto();
@@ -494,7 +521,7 @@
       return `<section class="bloco">
         <h2 class="secao secao-${op.toLowerCase()}"><span>${SECAO[op]} · ${itens.length}</span><span>${M.fmtMoeda(M.soma(itens, M.valorItem))}</span></h2>
         ${itens.map((i) => `<div class="cartao item">
-          <div class="item-topo"><div class="item-texto"><b>${esc(i.codigo)}</b> <small class="dep">${esc(i.departamento)}</small><span>${esc(i.descricao)}</span></div>
+          <div class="item-topo"><div class="item-texto"><b>${esc(nomeNaTela(i))}</b> <small class="dep">${esc(i.codigo)}</small></div>
             <button type="button" class="remover" data-acao="remover-item" data-sid="${i.sid}" aria-label="Remover">×</button></div>
           <div class="item-base">${campoQtd(i.quantidade, `data-qtd-item="${i.sid}" aria-label="Quantidade"`)}
             <b class="item-valor" id="valor-${i.sid}">${M.fmtMoeda(M.valorItem(i))}</b></div>
@@ -509,6 +536,7 @@
 
     const outros = o.pontos.length > 1;
     const idx = o.pontos.indexOf(p);
+    const u = p.gps ? M.utm(p.gps.lat, p.gps.lng) : null;
 
     return `<div class="pagina pagina-form">
       ${topo(p.nome, "obra", `<span class="topo-equipe">Obra ${esc(o.numero)}</span>`)}
@@ -519,22 +547,31 @@
       </div>` : ""}
       <fieldset class="conjunto" ${soLeitura(o) ? "disabled" : ""}>
       <section class="cartao dados">
-        <div class="dupla">
-          <label class="campo">Ponto
-            <input id="p-nome" value="${esc(p.nome)}" placeholder="P1" autocapitalize="characters">
-          </label>
-          <label class="campo">Data
-            <input id="p-dia" type="date" value="${esc(p.dia)}" max="${hoje()}">
-          </label>
-        </div>
+        <label class="campo">Ponto
+          <input id="p-nome" value="${esc(p.nome)}" placeholder="P1" autocapitalize="characters">
+        </label>
         <label class="campo"><span>Observação <small>(se tiver)</small></span>
           <textarea id="p-obs" rows="2" placeholder="Ex.: poste novo 11/300, troca de cruzeta">${esc(p.obs)}</textarea>
         </label>
         <div class="gps">
-          ${p.gps ? `<span>📍 ${p.gps.lat.toFixed(6)}, ${p.gps.lng.toFixed(6)} <small>±${Math.round(p.gps.prec || 0)} m</small></span>` : `<span class="sub">Sem localização</span>`}
-          <button type="button" class="link" data-acao="gps">${p.gps ? "Atualizar" : "📍 Marcar local"}</button>
+          ${u ? `<span class="utm"><small>UTM ${esc(u.zona)}</small> <b>X</b> ${u.x.toLocaleString("pt-BR")} <b>Y</b> ${u.y.toLocaleString("pt-BR")} <small>±${Math.round(p.gps.prec || 0)} m</small></span>` : `<span class="sub">Sem coordenada</span>`}
+          <button type="button" class="link" data-acao="gps">${p.gps ? "Atualizar" : "📍 Marcar coordenada"}</button>
         </div>
       </section>
+      </fieldset>
+
+      <section class="cartao adicionar" ${soLeitura(o) ? "hidden" : ""}>
+        <b>Serviços</b>
+        ${rapidosHtml(p)}
+        <button type="button" class="link link-busca" data-acao="abrir-busca">${estado.buscaAberta ? "Fechar busca" : "🔎 Outro serviço (buscar no catálogo)"}</button>
+        ${estado.buscaAberta ? `<label class="campo">
+          <input id="p-busca" type="search" value="${esc(estado.busca)}" placeholder="Código ou nome do serviço" autocomplete="off">
+        </label>
+        <div id="resultados">${resultadosHtml()}</div>` : ""}
+      </section>
+
+      <fieldset class="conjunto" ${soLeitura(o) ? "disabled" : ""}>
+      ${secoes || `<p class="vazio">Nenhum serviço lançado neste ponto.</p>`}
       </fieldset>
 
       <section class="cartao dados">
@@ -546,18 +583,7 @@
         </div>
       </section>
 
-      <section class="cartao adicionar" ${soLeitura(o) ? "hidden" : ""}>
-        <label class="campo">Adicionar serviço
-          <input id="p-busca" type="search" value="${esc(estado.busca)}" placeholder="Código ou nome do serviço" autocomplete="off">
-        </label>
-        <div id="resultados">${resultadosHtml()}</div>
-      </section>
-
-      <fieldset class="conjunto" ${soLeitura(o) ? "disabled" : ""}>
-      ${secoes || `<p class="vazio">Nenhum serviço lançado neste ponto.</p>`}
-
       ${soLeitura(o) ? "" : `<button type="button" class="botao botao-perigo botao-pequeno" data-acao="excluir-ponto">Excluir ponto ${esc(p.nome)}</button>`}
-      </fieldset>
 
       <div class="rodape">
         <div class="rodape-total"><span>Total do ponto</span><b id="total-ponto">${M.fmtMoeda(tp.valor)}</b></div>
@@ -579,8 +605,8 @@
     const ano = Number((p.dia || hoje()).slice(0, 4));
     return `<div class="fundo" data-acao="fechar-folha">
       <div class="folha" data-parar>
-        <div class="folha-topo"><b>${esc(g.codigo)} <i class="sigla sigla-${esc(sigla(g.departamento).replace("&", "").toLowerCase())}">${esc(sigla(g.departamento))}</i></b><button type="button" class="remover" data-acao="fechar-folha" aria-label="Fechar">×</button></div>
-        <p>${esc(g.descricao)}</p>
+        <div class="folha-topo"><b>${esc(g.rotulo || g.codigo)}</b><button type="button" class="remover" data-acao="fechar-folha" aria-label="Fechar">×</button></div>
+        <p>${g.rotulo ? `<small class="sub">Código ${esc(g.codigo)}</small>` : `${esc(g.descricao)} <i class="sigla sigla-${esc(sigla(g.departamento).replace("&", "").toLowerCase())}">${esc(sigla(g.departamento))}</i>`}</p>
         <div class="campo">Quantidade ${campoQtd(estado.qtd, `id="qtd-folha" aria-label="Quantidade"`, true)}</div>
         <div class="opcoes">
           ${g.opcoes.map((s) => {
@@ -691,7 +717,7 @@
     const agora = new Date();
     const linhas = [
       `OBRA ${o.numero} · ${p.nome}`,
-      `${agora.toLocaleDateString("pt-BR")} ${agora.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}${p.gps ? ` · ${p.gps.lat.toFixed(6)}, ${p.gps.lng.toFixed(6)}` : ""}`,
+      `${agora.toLocaleDateString("pt-BR")} ${agora.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}${p.gps ? ` · ${M.fmtUtm(p.gps)}` : ""}`,
     ];
     const fs = Math.max(14, Math.round(Math.min(w, h) * 0.032));
     const alt = fs * 1.35 * linhas.length + fs * 0.6;
@@ -766,7 +792,7 @@
     const repetida = (await Banco.listarObras()).find((x) => x.numero === numero && x.id !== o.id);
     if (repetida && !confirm(`Já existe a obra ${numero} neste celular. Criar outra com o mesmo número?`)) return;
     const nova = !o.criada_em;
-    Object.assign(o, { numero, local: v("f-local"), municipio: v("f-municipio"), equipe: v("f-equipe"), obs: v("f-obs") });
+    Object.assign(o, { numero, municipio: v("f-municipio"), obs: v("f-obs") });
     if (nova) o.criada_em = new Date().toISOString();
     await salvarAgora();
     Banco.pedirPersistencia();
@@ -776,7 +802,7 @@
   function novoPonto() {
     const o = estado.obra;
     const anterior = ponto();
-    const p = { id: novoId(), nome: proximoNome(o), dia: anterior?.dia || hoje(), obs: "", gps: null, itens: [], fotos: [] };
+    const p = { id: novoId(), nome: proximoNome(o), dia: hoje(), obs: "", gps: null, itens: [], fotos: [] };
     o.pontos.push(p);
     salvarAgora();
     irPara("ponto", { pontoId: p.id });
@@ -1044,6 +1070,23 @@
         estado.busca = "";
         return render();
       }
+      case "rapido": {
+        const g = grupos().find((x) => x.chave === alvo.dataset.chave);
+        if (!g) return avisar("Esse código não está no catálogo baixado.", "erro");
+        estado.escolhido = { ...g, rotulo: alvo.dataset.rotulo };
+        estado.qtd = "";
+        return render();
+      }
+      case "abrir-busca":
+        estado.buscaAberta = !estado.buscaAberta;
+        estado.busca = "";
+        render();
+        if (estado.buscaAberta) document.getElementById("p-busca")?.focus();
+        return;
+      case "mostrar-banco":
+        estado.bancoAberto = !estado.bancoAberto;
+        if (estado.bancoAberto && estado.remotas === null) buscarRemotas();
+        return render();
       case "fechar-folha":
         estado.escolhido = null;
         return render();

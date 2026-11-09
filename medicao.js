@@ -56,6 +56,33 @@
     return a < b ? -1 : a > b ? 1 : 0;
   }
 
+  /** Latitude/longitude (WGS84/SIRGAS 2000) em UTM: fuso, X (leste) e Y (norte), em metros. */
+  function utm(lat, lng) {
+    const a = 6378137, f = 1 / 298.257223563, k0 = 0.9996;
+    const e2 = f * (2 - f), ep2 = e2 / (1 - e2);
+    const zona = Math.floor((lng + 180) / 6) + 1;
+    const rad = Math.PI / 180;
+    const fi = lat * rad, l0 = ((zona - 1) * 6 - 180 + 3) * rad;
+    const N = a / Math.sqrt(1 - e2 * Math.sin(fi) ** 2);
+    const T = Math.tan(fi) ** 2, Cc = ep2 * Math.cos(fi) ** 2, A = Math.cos(fi) * (lng * rad - l0);
+    const Mm = a * ((1 - e2 / 4 - 3 * e2 ** 2 / 64 - 5 * e2 ** 3 / 256) * fi
+      - (3 * e2 / 8 + 3 * e2 ** 2 / 32 + 45 * e2 ** 3 / 1024) * Math.sin(2 * fi)
+      + (15 * e2 ** 2 / 256 + 45 * e2 ** 3 / 1024) * Math.sin(4 * fi)
+      - (35 * e2 ** 3 / 3072) * Math.sin(6 * fi));
+    const x = k0 * N * (A + (1 - T + Cc) * A ** 3 / 6 + (5 - 18 * T + T * T + 72 * Cc - 58 * ep2) * A ** 5 / 120) + 500000;
+    let y = k0 * (Mm + N * Math.tan(fi) * (A * A / 2 + (5 - T + 9 * Cc + 4 * Cc * Cc) * A ** 4 / 24
+      + (61 - 58 * T + T * T + 600 * Cc - 330 * ep2) * A ** 6 / 720));
+    if (lat < 0) y += 10000000;
+    return { x: Math.round(x), y: Math.round(y), zona: `${zona}${lat < 0 ? "S" : "N"}` };
+  }
+  const milhar = (n) => n.toLocaleString("pt-BR");
+  /** "UTM 24S · X 551.753 · Y 9.237.777" */
+  function fmtUtm(gps) {
+    if (!gps) return "";
+    const u = utm(gps.lat, gps.lng);
+    return `UTM ${u.zona} · X ${milhar(u.x)} · Y ${milhar(u.y)}`;
+  }
+
   function totaisPonto(p) {
     return {
       valor: soma(p.itens, valorItem),
@@ -475,7 +502,7 @@
     doc.setFontSize(8);
     const infos = [
       obra.local && `Local: ${obra.local}`,
-      obra.municipio && `Município: ${obra.municipio}`,
+      obra.municipio && `Cidade: ${obra.municipio}`,
       obra.equipe && `Equipe executora: ${obra.equipe}`,
       supervisor && `Supervisor: ${supervisor}`,
       `Pontos: ${pontos.length}`,
@@ -507,7 +534,7 @@
       doc.setTextColor(0, 0, 0);
       const extras = [
         p.obs && `Obs.: ${p.obs}`,
-        p.gps && `GPS: ${p.gps.lat.toFixed(6)}, ${p.gps.lng.toFixed(6)} (±${Math.round(p.gps.prec || 0)} m)`,
+        p.gps && `Coordenada ${fmtUtm(p.gps)} (±${Math.round(p.gps.prec || 0)} m)`,
       ].filter(Boolean);
       for (const e of extras) {
         const t = doc.splitTextToSize(e, L);
@@ -583,7 +610,7 @@
 
   window.Medicao = {
     SERVICOS: [], POR_ID: new Map(), DEPARTAMENTOS: [], OPERACOES, usarCatalogo, valorUS, anoUS, numero, valorItem, soma,
-    fmtMoeda, fmtNum, fmtQtd, fmtDia, fmtHora, totaisPonto, totaisObra, estrutura, categoria,
+    fmtMoeda, fmtNum, fmtQtd, fmtDia, fmtHora, utm, fmtUtm, totaisPonto, totaisObra, estrutura, categoria,
     gerarExcel, gerarPdf, blobParaDataUrl, catalogoGeradoEm: null,
   };
 })();
