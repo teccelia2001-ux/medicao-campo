@@ -11,10 +11,14 @@
   // ------------------------------------------------------------------ catálogo
   // vem do banco (medicao_servicos e medicao_valor_us) e fica guardado no aparelho
   let C = { valor_us: {}, servicos: [] };
+  const DEPS_APP = ["C&M (LM)", "C&M (LV)", "P&LF"];
   function usarCatalogo(cat) {
     C = cat;
     const M = window.Medicao;
-    M.SERVICOS = cat.servicos.map((s) => ({ ...s, codigo: s.codigo || "", operacao: s.operacao || "" }));
+    // a medição de campo usa só linha morta, linha viva e P&LF
+    M.SERVICOS = cat.servicos
+      .filter((s) => DEPS_APP.includes(s.departamento))
+      .map((s) => ({ ...s, codigo: s.codigo || "", operacao: s.operacao || "" }));
     M.POR_ID = new Map(M.SERVICOS.map((s) => [s.id, s]));
     M.DEPARTAMENTOS = [...new Set(M.SERVICOS.map((s) => s.departamento))].sort(
       (a, b) => ordemDep(a)[0] - ordemDep(b)[0] || cmp(a, b),

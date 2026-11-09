@@ -39,7 +39,6 @@
     obra: null,
     pontoId: null,
     busca: "",
-    dep: null,
     escolhido: null, // {codigo, descricao, opcoes}
     qtd: "",
     foto: null, // {id, url}
@@ -275,7 +274,7 @@
       return `<button type="button" class="cartao obra-item" data-acao="abrir-obra" data-id="${o.id}">
         <div class="linha-topo"><span class="chip-obra"><small>OBRA</small><b>${esc(o.numero)}</b></span><b class="valor">${M.fmtMoeda(t.valor)}</b></div>
         ${o.local || o.municipio ? `<p class="sub">${esc([o.local, o.municipio].filter(Boolean).join(" · "))}</p>` : ""}
-        <small class="sub">${plural(o.pontos.length, "ponto", "pontos")} · ${plural(o.pontos.reduce((n, p) => n + p.fotos.length, 0), "foto", "fotos")} · ${esc(o.departamento)}${o.supervisor_nome && soLeitura(o) ? " · " + esc(o.supervisor_nome) : ""}</small>
+        <small class="sub">${plural(o.pontos.length, "ponto", "pontos")} · ${plural(o.pontos.reduce((n, p) => n + p.fotos.length, 0), "foto", "fotos")}${o.supervisor_nome && soLeitura(o) ? " · " + esc(o.supervisor_nome) : ""}</small>
         <div class="linha-topo">${seloHtml(o)}<small class="sub">alterada ${M.fmtHora(o.atualizada_em)}</small></div>
       </button>`;
     };
@@ -384,10 +383,6 @@
         <label class="campo"><span>Município <small>(se tiver)</small></span>
           <input id="f-municipio" value="${esc(o.municipio)}">
         </label>
-        <label class="campo">Departamento dos serviços
-          <select id="f-dep">${M.DEPARTAMENTOS.map((d) => `<option ${d === o.departamento ? "selected" : ""}>${esc(d)}</option>`).join("")}</select>
-          <small>É o catálogo que abre primeiro. Dá para trocar na hora de lançar.</small>
-        </label>
         <label class="campo"><span>Equipe executora <small>(se tiver)</small></span>
           <input id="f-equipe" value="${esc(o.equipe)}" placeholder="Ex.: CONSTRUÇÃO 10">
         </label>
@@ -446,29 +441,39 @@
   }
 
   // ---------- ponto
-  function gruposDoDep(dep) {
+  // rótulo curto do departamento; também vale na busca ("lv cruzeta")
+  const SIGLA = { "C&M (LM)": "LM", "C&M (LV)": "LV", "P&LF": "P&LF" };
+  const sigla = (dep) => SIGLA[dep] || dep;
+
+  /** Um resultado por departamento + código, com os tipos que existem (instalar, retirar...). */
+  function montarGrupos() {
     const mapa = new Map();
-    M.SERVICOS.filter((s) => s.departamento === dep).forEach((s) => {
-      if (!mapa.has(s.codigo)) {
-        mapa.set(s.codigo, { codigo: s.codigo, descricao: s.descricao, busca: normalizar(`${s.codigo} ${s.descricao}`), opcoes: [] });
+    M.SERVICOS.forEach((s) => {
+      const k = `${s.departamento}|${s.codigo}`;
+      if (!mapa.has(k)) {
+        mapa.set(k, {
+          chave: k, codigo: s.codigo, descricao: s.descricao, departamento: s.departamento,
+          busca: normalizar(`${s.codigo} ${s.descricao} ${sigla(s.departamento)} ${sigla(s.departamento).replace("&", "")}`), opcoes: [],
+        });
       }
-      mapa.get(s.codigo).opcoes.push(s);
+      mapa.get(k).opcoes.push(s);
     });
     mapa.forEach((g) => g.opcoes.sort((a, b) => M.OPERACOES.indexOf(a.operacao) - M.OPERACOES.indexOf(b.operacao)));
-    return [...mapa.values()];
+    const ordem = (d) => M.DEPARTAMENTOS.indexOf(d);
+    return [...mapa.values()].sort((a, b) => ordem(a.departamento) - ordem(b.departamento));
   }
   const cacheGrupos = new Map(); // limpo quando o catálogo é baixado de novo
-  const grupos = (dep) => {
-    if (!cacheGrupos.has(dep)) cacheGrupos.set(dep, gruposDoDep(dep));
-    return cacheGrupos.get(dep);
+  const grupos = () => {
+    if (!cacheGrupos.has("todos")) cacheGrupos.set("todos", montarGrupos());
+    return cacheGrupos.get("todos");
   };
 
   function resultadosHtml() {
     const termos = normalizar(estado.busca).split(/\s+/).filter(Boolean);
     if (!termos.length) return "";
-    const res = grupos(estado.dep).filter((g) => termos.every((t) => g.busca.includes(t))).slice(0, MAX_RESULTADOS);
-    if (!res.length) return `<p class="vazio">Nenhum serviço encontrado em ${esc(estado.dep)}.</p>`;
-    return `<ul class="resultados">${res.map((g) => `<li><button type="button" data-acao="escolher" data-cod="${esc(g.codigo)}"><b>${esc(g.codigo)}</b><span>${esc(g.descricao)}</span></button></li>`).join("")}</ul>`;
+    const res = grupos().filter((g) => termos.every((t) => g.busca.includes(t))).slice(0, MAX_RESULTADOS);
+    if (!res.length) return `<p class="vazio">Nenhum serviço encontrado.</p>`;
+    return `<ul class="resultados">${res.map((g) => `<li><button type="button" data-acao="escolher" data-chave="${esc(g.chave)}"><b>${esc(g.codigo)}</b><span>${esc(g.descricao)}</span><i class="sigla sigla-${esc(sigla(g.departamento).replace("&", "").toLowerCase())}">${esc(sigla(g.departamento))}</i></button></li>`).join("")}</ul>`;
   }
 
   function campoQtd(valor, attrs, grande = false) {
@@ -543,7 +548,6 @@
 
       <section class="cartao adicionar" ${soLeitura(o) ? "hidden" : ""}>
         <label class="campo">Adicionar serviço
-          <select id="p-dep" class="seletor-dep">${M.DEPARTAMENTOS.map((d) => `<option ${d === estado.dep ? "selected" : ""}>${esc(d)}</option>`).join("")}</select>
           <input id="p-busca" type="search" value="${esc(estado.busca)}" placeholder="Código ou nome do serviço" autocomplete="off">
         </label>
         <div id="resultados">${resultadosHtml()}</div>
@@ -575,7 +579,7 @@
     const ano = Number((p.dia || hoje()).slice(0, 4));
     return `<div class="fundo" data-acao="fechar-folha">
       <div class="folha" data-parar>
-        <div class="folha-topo"><b>${esc(g.codigo)}</b><button type="button" class="remover" data-acao="fechar-folha" aria-label="Fechar">×</button></div>
+        <div class="folha-topo"><b>${esc(g.codigo)} <i class="sigla sigla-${esc(sigla(g.departamento).replace("&", "").toLowerCase())}">${esc(sigla(g.departamento))}</i></b><button type="button" class="remover" data-acao="fechar-folha" aria-label="Fechar">×</button></div>
         <p>${esc(g.descricao)}</p>
         <div class="campo">Quantidade ${campoQtd(estado.qtd, `id="qtd-folha" aria-label="Quantidade"`, true)}</div>
         <div class="opcoes">
@@ -743,7 +747,7 @@
   function novaObra() {
     estado.obra = {
       id: novoId(), numero: "", local: "", municipio: "", equipe: "", obs: "",
-      departamento: M.DEPARTAMENTOS.includes("C&M (LM)") ? "C&M (LM)" : M.DEPARTAMENTOS[0],
+      departamento: null,
       pontos: [], criada_em: null,
     };
     irPara("obra-form");
@@ -762,7 +766,7 @@
     const repetida = (await Banco.listarObras()).find((x) => x.numero === numero && x.id !== o.id);
     if (repetida && !confirm(`Já existe a obra ${numero} neste celular. Criar outra com o mesmo número?`)) return;
     const nova = !o.criada_em;
-    Object.assign(o, { numero, local: v("f-local"), municipio: v("f-municipio"), departamento: v("f-dep"), equipe: v("f-equipe"), obs: v("f-obs") });
+    Object.assign(o, { numero, local: v("f-local"), municipio: v("f-municipio"), equipe: v("f-equipe"), obs: v("f-obs") });
     if (nova) o.criada_em = new Date().toISOString();
     await salvarAgora();
     Banco.pedirPersistencia();
@@ -775,7 +779,7 @@
     const p = { id: novoId(), nome: proximoNome(o), dia: anterior?.dia || hoje(), obs: "", gps: null, itens: [], fotos: [] };
     o.pontos.push(p);
     salvarAgora();
-    irPara("ponto", { pontoId: p.id, dep: estado.dep || o.departamento });
+    irPara("ponto", { pontoId: p.id });
     marcarGpsSilencioso(p);
   }
 
@@ -965,7 +969,6 @@
           avisar("Baixando a obra…", "guardado");
           const obra = await trazerObra(alvo.dataset.id);
           estado.obra = obra;
-          estado.dep = obra.departamento;
           $aviso.hidden = true;
           return irPara("obra");
         } catch (err) {
@@ -993,14 +996,13 @@
       case "nova-obra": return novaObra();
       case "abrir-obra": {
         estado.obra = await Banco.obterObra(alvo.dataset.id);
-        estado.dep = estado.obra.departamento;
         return irPara("obra");
       }
       case "editar-obra": return irPara("obra-form");
       case "salvar-obra": return salvarObraForm();
       case "obra": return irPara("obra");
       case "novo-ponto": return novoPonto();
-      case "abrir-ponto": return irPara("ponto", { pontoId: alvo.dataset.id, dep: estado.dep || o.departamento });
+      case "abrir-ponto": return irPara("ponto", { pontoId: alvo.dataset.id });
       case "ponto-ant":
       case "ponto-prox": {
         const idx = o.pontos.findIndex((p) => p.id === estado.pontoId) + (alvo.dataset.acao === "ponto-ant" ? -1 : 1);
@@ -1036,7 +1038,7 @@
       }
       case "gps": return marcarGps();
       case "escolher": {
-        const g = grupos(estado.dep).find((x) => x.codigo === alvo.dataset.cod);
+        const g = grupos().find((x) => x.chave === alvo.dataset.chave);
         estado.escolhido = g;
         estado.qtd = "";
         estado.busca = "";
@@ -1122,11 +1124,6 @@
       const a = t.files[0];
       t.value = "";
       if (a) importarBackup(a);
-      return;
-    }
-    if (t.id === "p-dep") {
-      estado.dep = t.value;
-      document.getElementById("resultados").innerHTML = resultadosHtml();
       return;
     }
     if (p && t.id === "p-dia") {
