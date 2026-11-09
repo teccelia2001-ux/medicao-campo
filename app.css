@@ -518,3 +518,5 @@ button, label.botao, .rapido, .miniatura, a { touch-action: manipulation; }
 }
 /* nome comprido: até duas linhas, sem cortar */
 .item-nome b { white-space: normal; font-size: 13px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.faixa-ok { background: #dcfce7; color: #166534; font-weight: 600; }
+a.botao { text-decoration: none; }

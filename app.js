@@ -126,7 +126,7 @@
 
   // ------------------------------------------------------------------ envio ao banco
   let tempoEnvio = null;
-  function enviarDepois(ms = 4000) {
+  function enviarDepois(ms = 1200) {
     clearTimeout(tempoEnvio);
     tempoEnvio = setTimeout(enviarPendentes, ms);
   }
@@ -136,6 +136,7 @@
     if (estado.enviando || !navigator.onLine || !Nuvem.lerSessao()) return;
     estado.enviando = true;
     atualizarSelo();
+    let semRede = false;
     try {
       const exclusoes = await Banco.ler("exclusoes", []);
       for (const id of [...exclusoes]) {
@@ -148,7 +149,8 @@
           if (e.status === 0) throw e;
         }
       }
-      const obras = (await Banco.listarObras()).filter((o) => o.pendente && o.dono !== false && o.criada_em);
+      const meu = estado.perfil?.user_id;
+      const obras = (await Banco.listarObras()).filter((o) => o.pendente && o.dono !== false && o.criada_em && (!o.dono_id || o.dono_id === meu));
       for (const o of obras) {
         try {
           await Nuvem.enviarObra(o, M.totaisObra(o));
@@ -160,9 +162,15 @@
         }
       }
     } catch (e) {
-      /* sem sinal */
+      semRede = true; // sem sinal: tenta de novo quando voltar
     } finally {
       estado.enviando = false;
+    }
+    // mudou algo enquanto subia? manda de novo logo em seguida
+    if (!semRede) {
+      const meu = estado.perfil?.user_id;
+      const falta = (await Banco.listarObras()).some((o) => o.pendente && !o.erro_envio && o.dono !== false && o.criada_em && (!o.dono_id || o.dono_id === meu));
+      if (falta) enviarDepois(800);
     }
     // atualiza o que está na tela sem perder o que o supervisor digita
     if (estado.obra) {
@@ -217,7 +225,7 @@
       id: r.id, numero: r.numero, local: r.local || "", municipio: r.municipio || "", departamento: r.departamento,
       equipe: r.equipe || "", obs: r.obs || "", pontos: r.pontos || [], fotos_info: r.fotos || {},
       criada_em: r.criada_em, atualizada_em: r.atualizada_em, pendente: false, enviada_em: r.recebida_em,
-      dono, supervisor_nome: remota?.supervisor_nome || null,
+      dono, dono_id: r.supervisor_id, supervisor_nome: remota?.supervisor_nome || null,
     };
     await Banco.salvarObra(obra, { envio: true });
     return obra;
@@ -316,7 +324,8 @@
         <p>Lance os serviços de cada ponto da obra e gere a medição no padrão do Termômetro.</p>
       </section>
       ${!estado.online ? `<div class="faixa faixa-guardado">Sem internet: aparecem só as obras guardadas no celular. O que você lançar sobe para o banco quando o sinal voltar.</div>`
-        : pendentes ? `<div class="faixa faixa-guardado">${plural(pendentes, "obra aguardando", "obras aguardando")} envio ao banco${estado.enviando ? "… enviando" : ""}.</div>` : ""}
+        : pendentes ? `<div class="faixa faixa-guardado">${estado.enviando ? "⟳ Enviando" : "⏳ Aguardando envio de"} ${plural(pendentes, "obra", "obras")} ao banco…</div>`
+          : `<div class="faixa faixa-ok">✓ Tudo salvo no banco</div>`}
       <button type="button" class="botao botao-grande" data-acao="nova-obra">+ Nova obra</button>
       ${instalarHtml()}
       <section class="bloco">
@@ -349,6 +358,7 @@
         <b>Sua conta</b>
         <p class="sub">${esc(p.nome)} · ${esc(p.email)}${p.admin ? " · administrador" : ""}</p>
         <p class="sub">O nome que sai na medição é o do cadastro${p.admin ? "" : "; para corrigir, fale com o administrador"}.</p>
+        <a class="botao botao-claro" href="painel.html">📊 Painel de medições (todas as obras)</a>
         <button type="button" class="botao botao-perigo" data-acao="sair">Sair da conta</button>
       </section>
       ${p.admin ? `<section class="cartao dados">
@@ -361,13 +371,6 @@
           <label><input type="checkbox" data-sup-admin="${s.user_id}" ${s.admin ? "checked" : ""} ${s.user_id === p.user_id ? "disabled" : ""}> administrador</label>
         </div>`).join("")}
       </section>` : ""}
-      <section class="cartao dados">
-        <b>Backup</b>
-        <p class="sub">Para passar uma obra para outro celular ou guardar uma cópia, abra a obra e toque em <b>Backup da obra</b>. Para trazer de volta:</p>
-        <label class="botao botao-claro">Importar backup (.json)
-          <input type="file" accept=".json,application/json" data-acao="importar" hidden>
-        </label>
-      </section>
       <section class="cartao dados">
         <b>Catálogo de serviços</b>
         <p class="sub">${M.SERVICOS.length} serviços do Termômetro, baixados do banco em ${M.fmtHora(M.catalogoGeradoEm)}.</p>
@@ -433,7 +436,6 @@
         ${pontos || `<p class="vazio">Nenhum ponto ainda. Cada poste ou trecho é um ponto (P1, P2...).</p>`}
       </section>
       <section class="bloco acoes-obra">
-        <button type="button" class="botao botao-claro" data-acao="backup">💾 Backup da obra</button>
         <button type="button" class="botao botao-perigo" data-acao="excluir-obra">${soLeitura(o) ? "Tirar deste celular" : "Excluir obra"}</button>
       </section>
       <div class="rodape">
@@ -812,7 +814,10 @@
     if (repetida && !confirm(`Já existe a obra ${numero} neste celular. Criar outra com o mesmo número?`)) return;
     const nova = !o.criada_em;
     Object.assign(o, { numero, municipio: v("f-municipio"), obs: v("f-obs") });
-    if (nova) o.criada_em = new Date().toISOString();
+    if (nova) {
+      o.criada_em = new Date().toISOString();
+      o.dono_id = estado.perfil?.user_id || null;
+    }
     await salvarAgora();
     Banco.pedirPersistencia();
     irPara("obra");
@@ -900,46 +905,6 @@
       await navigator.share({ files: [arquivoDe(a)], title: a.nome });
     } catch (e) {
       if (e.name !== "AbortError") baixar(a.blob, a.nome);
-    }
-  }
-
-  async function backupObra() {
-    const o = estado.obra;
-    await salvarAgora();
-    avisar("Montando o backup…", "guardado");
-    const fotos = await Banco.fotosDaObra(o.id);
-    const dados = {
-      app: "medicao-campo", versao: 1, exportado_em: new Date().toISOString(), obra: o,
-      fotos: await Promise.all(fotos.map(async (f) => ({
-        id: f.id, pontoId: f.pontoId, criada_em: f.criada_em, gps: f.gps, largura: f.largura, altura: f.altura,
-        dataUrl: await M.blobParaDataUrl(f.blob),
-      }))),
-    };
-    const blob = new Blob([JSON.stringify(dados)], { type: "application/json" });
-    const nome = `obra-${o.numero}-medicao.json`;
-    const arq = { blob, nome };
-    if (podeCompartilhar(arq)) {
-      try { await navigator.share({ files: [arquivoDe(arq)], title: nome }); return; } catch (e) { if (e.name === "AbortError") return; }
-    }
-    baixar(blob, nome);
-  }
-
-  async function importarBackup(arquivo) {
-    try {
-      const dados = JSON.parse(await arquivo.text());
-      if (dados.app !== "medicao-campo" || !dados.obra?.id) throw new Error("Arquivo não é um backup da Medição de Campo.");
-      const existe = await Banco.obterObra(dados.obra.id);
-      if (existe && !confirm(`A obra ${dados.obra.numero} já está neste celular. Substituir pela do backup?`)) return;
-      if (existe) await Banco.excluirObra(existe.id);
-      for (const f of dados.fotos || []) {
-        const blob = await (await fetch(f.dataUrl)).blob();
-        await Banco.salvarFoto({ id: f.id, obraId: dados.obra.id, pontoId: f.pontoId, criada_em: f.criada_em, gps: f.gps, largura: f.largura, altura: f.altura, blob });
-      }
-      await Banco.salvarObra(dados.obra);
-      avisar(`Obra ${dados.obra.numero} importada.`);
-      irPara("inicio");
-    } catch (e) {
-      avisar(e.message || "Não foi possível ler o backup.", "erro");
     }
   }
 
@@ -1149,7 +1114,6 @@
       case "gerar-xlsx": return gerar("xlsx");
       case "compartilhar": return compartilhar();
       case "baixar": return baixar(estado.arquivo.blob, estado.arquivo.nome);
-      case "backup": return backupObra();
       default:
     }
   });
@@ -1203,12 +1167,6 @@
       t.value = "";
       return receberFotos(arquivos);
     }
-    if (t.dataset.acao === "importar") {
-      const a = t.files[0];
-      t.value = "";
-      if (a) importarBackup(a);
-      return;
-    }
     if (p && t.id === "p-dia") {
       if (!t.value || t.value > hoje()) { t.value = p.dia; return avisar("A data não pode ser futura.", "erro"); }
       p.dia = t.value;
@@ -1255,7 +1213,9 @@
     estado.online = false;
     if (estado.tela === "inicio") render();
   });
-  setInterval(() => enviarDepois(0), 60000);
+  setInterval(() => enviarDepois(0), 20000);
+  // fechando ou trocando de app: tenta mandar o que falta (o que não for, continua guardado)
+  window.addEventListener("pagehide", () => enviarPendentes());
 
   // ajustes do administrador: nome, ativo e administrador de cada supervisor
   $app.addEventListener("change", async (e) => {
@@ -1306,8 +1266,15 @@
   }
 
   async function sairDaConta(forcado = false) {
-    const pend = (await Banco.listarObras()).filter((o) => o.pendente && !soLeitura(o)).length;
-    if (!forcado && pend && !confirm(`${plural(pend, "obra ainda não subiu", "obras ainda não subiram")} para o banco. Elas continuam no celular e sobem quando você entrar de novo. Sair mesmo assim?`)) return;
+    if (!forcado) {
+      await salvarAgora();
+      await enviarPendentes();
+      const pend = (await Banco.listarObras()).filter((o) => o.pendente && !soLeitura(o)).length;
+      if (pend) {
+        alert(`${plural(pend, "obra ainda não subiu", "obras ainda não subiram")} para o banco. Fique com internet até aparecer "Tudo salvo no banco" e saia depois.`);
+        return;
+      }
+    }
     Nuvem.sair();
     estado.perfil = null;
     estado.remotas = null;

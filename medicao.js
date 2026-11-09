@@ -180,6 +180,7 @@
 
   async function imagemBase64(url) {
     const r = await fetch(url);
+    if (!r.ok || !(r.headers.get("content-type") || "").startsWith("image/")) throw new Error("logo não encontrado");
     return blobParaDataUrl(await r.blob());
   }
   function blobParaDataUrl(blob) {
@@ -403,7 +404,9 @@
     const hCab = 17;
     doc.setFillColor(...RGB.tarja);
     doc.rect(M, TOPO, L, hCab, "F");
-    if (logo) doc.addImage(logo, "PNG", M + 3, TOPO + (hCab - 9) / 2, 37, 9, "logo", "FAST");
+    if (logo) {
+      try { doc.addImage(logo, "PNG", M + 3, TOPO + (hCab - 9) / 2, 37, 9, "logo", "FAST"); } catch (e) { /* segue sem logo */ }
+    }
     doc.setTextColor(255, 255, 255);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);

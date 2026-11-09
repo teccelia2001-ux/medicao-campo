@@ -1,6 +1,6 @@
 /* Guarda o app e as bibliotecas no celular para abrir sem internet.
    Ao mudar qualquer arquivo, suba a VERSAO para os celulares pegarem a nova. */
-const VERSAO = "medicao-v9";
+const VERSAO = "medicao-v10";
 const ARQUIVOS = [
   "./",
   "index.html",
@@ -10,6 +10,9 @@ const ARQUIVOS = [
   "medicao.js",
   "config.js",
   "nuvem.js",
+  "painel.html",
+  "painel.css",
+  "painel.js",
   "manifest.webmanifest",
   "logo-teccel-red.png",
   "logo-teccel-white.png",
