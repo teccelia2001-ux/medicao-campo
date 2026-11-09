@@ -75,12 +75,11 @@
     if (lat < 0) y += 10000000;
     return { x: Math.round(x), y: Math.round(y), zona: `${zona}${lat < 0 ? "S" : "N"}` };
   }
-  const milhar = (n) => n.toLocaleString("pt-BR");
-  /** "UTM 24S · X 551.753 · Y 9.237.777" */
+  /** "UTM 24S · X 551753 · Y 9237777" (sem ponto de milhar, como no GPS) */
   function fmtUtm(gps) {
     if (!gps) return "";
     const u = utm(gps.lat, gps.lng);
-    return `UTM ${u.zona} · X ${milhar(u.x)} · Y ${milhar(u.y)}`;
+    return `UTM ${u.zona} · X ${u.x} · Y ${u.y}`;
   }
 
   function totaisPonto(p) {

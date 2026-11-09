@@ -555,7 +555,7 @@
           <textarea id="p-obs" rows="2" placeholder="Ex.: poste novo 11/300, troca de cruzeta">${esc(p.obs)}</textarea>
         </label>
         <div class="gps">
-          ${u ? `<span class="utm"><small>UTM ${esc(u.zona)}</small> <b>X</b> ${u.x.toLocaleString("pt-BR")} <b>Y</b> ${u.y.toLocaleString("pt-BR")} <small>±${Math.round(p.gps.prec || 0)} m</small></span>` : `<span class="sub">Sem coordenada</span>`}
+          ${u ? `<span class="utm"><small>UTM ${esc(u.zona)}</small> <b>X</b> ${u.x} <b>Y</b> ${u.y} <small>±${Math.round(p.gps.prec || 0)} m</small></span>` : `<span class="sub">Sem coordenada</span>`}
           <button type="button" class="link" data-acao="gps">${p.gps ? "Atualizar" : "📍 Marcar coordenada"}</button>
         </div>
       </section>
@@ -563,12 +563,12 @@
 
       <section class="cartao adicionar" ${soLeitura(o) ? "hidden" : ""}>
         <b>Serviços</b>
-        ${rapidosHtml(p)}
         <button type="button" class="link link-busca" data-acao="abrir-busca">${estado.buscaAberta ? "Fechar busca" : "🔎 Outro serviço (buscar no catálogo)"}</button>
         ${estado.buscaAberta ? `<label class="campo">
           <input id="p-busca" type="search" value="${esc(estado.busca)}" placeholder="Código ou nome do serviço" autocomplete="off">
         </label>
         <div id="resultados">${resultadosHtml()}</div>` : ""}
+        ${rapidosHtml(p)}
       </section>
 
       <fieldset class="conjunto" ${soLeitura(o) ? "disabled" : ""}>
