@@ -491,3 +491,4 @@ button, label.botao, .rapido, .miniatura, a { touch-action: manipulation; }
 @media (max-width: 345px) {
   .rapidos { grid-template-columns: repeat(2, 1fr); }
 }
+.sub-inline { font-size: 13px; font-weight: 500; color: var(--suave); }

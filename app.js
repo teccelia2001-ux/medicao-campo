@@ -81,6 +81,7 @@
       await recarregarLocais();
       estado.obra = null;
       liberarMiniaturas();
+      if (Date.now() - (estado.remotasEm || 0) > 20000) buscarRemotas();
     }
     render();
     window.scrollTo(0, 0);
@@ -192,6 +193,7 @@
     try {
       const lista = await Nuvem.listarObras();
       estado.remotas = lista;
+      estado.remotasEm = Date.now();
       // obra parada no aparelho e mais nova no banco: traz a versão do banco
       for (const r of lista) {
         const local = await Banco.obterObra(r.id);
@@ -265,31 +267,47 @@
   }
 
   // ---------- início
+  /** Todas as obras do sistema numa lista só: as do celular e as que estão no banco.
+   *  Tocar numa obra que ainda não está no celular abre direto (o app traz do banco). */
+  function obrasDaLista() {
+    const meu = estado.perfil?.user_id;
+    const remotas = new Map((estado.remotas || []).map((r) => [r.id, r]));
+    const lista = estado.obras.map((o) => {
+      const r = remotas.get(o.id);
+      const t = M.totaisObra(o);
+      return {
+        id: o.id, numero: o.numero, cidade: o.municipio || o.local || "", total: t.valor,
+        pontos: o.pontos.length, fotos: o.pontos.reduce((n, p) => n + p.fotos.length, 0),
+        atualizada_em: o.atualizada_em, supervisor: soLeitura(o) ? o.supervisor_nome || r?.supervisor_nome : estado.perfil?.nome,
+        selo: seloHtml(o),
+      };
+    });
+    const locais = new Set(estado.obras.map((o) => o.id));
+    for (const r of remotas.values()) {
+      if (locais.has(r.id)) continue;
+      lista.push({
+        id: r.id, numero: r.numero, cidade: r.municipio || r.local || "", total: Number(r.total), pontos: r.qtd_pontos,
+        fotos: null, atualizada_em: r.atualizada_em, supervisor: r.supervisor_nome,
+        selo: r.supervisor_id === meu ? `<span class="selo selo-ok">✓ No banco</span>` : `<span class="selo selo-consulta">Consulta</span>`,
+      });
+    }
+    return lista.sort((a, b) => (b.atualizada_em || "").localeCompare(a.atualizada_em || ""));
+  }
+
   function telaInicio() {
     const sup = estado.perfil?.nome;
     const pendentes = estado.obras.filter((o) => o.pendente && !soLeitura(o)).length;
-    const minhas = estado.obras.filter((o) => !soLeitura(o));
-    const consultas = estado.obras.filter(soLeitura);
-    const cartao = (o) => {
-      const t = M.totaisObra(o);
-      return `<button type="button" class="cartao obra-item" data-acao="abrir-obra" data-id="${o.id}">
-        <div class="linha-topo"><span class="chip-obra"><small>OBRA</small><b>${esc(o.numero)}</b></span><b class="valor">${M.fmtMoeda(t.valor)}</b></div>
-        ${o.local || o.municipio ? `<p class="sub">${esc([o.local, o.municipio].filter(Boolean).join(" · "))}</p>` : ""}
-        <small class="sub">${plural(o.pontos.length, "ponto", "pontos")} · ${plural(o.pontos.reduce((n, p) => n + p.fotos.length, 0), "foto", "fotos")}${o.supervisor_nome && soLeitura(o) ? " · " + esc(o.supervisor_nome) : ""}</small>
-        <div class="linha-topo">${seloHtml(o)}<small class="sub">alterada ${M.fmtHora(o.atualizada_em)}</small></div>
+    const termos = normalizar(estado.filtroObra || "").split(/\s+/).filter(Boolean);
+    const todas = obrasDaLista();
+    const vistas = termos.length
+      ? todas.filter((o) => termos.every((t) => normalizar(`${o.numero} ${o.cidade} ${o.supervisor || ""}`).includes(t)))
+      : todas;
+    const cartao = (o) => `<button type="button" class="cartao obra-item" data-acao="abrir-obra" data-id="${o.id}">
+        <div class="linha-topo"><span class="chip-obra"><small>OBRA</small><b>${esc(o.numero)}</b></span><b class="valor">${M.fmtMoeda(o.total)}</b></div>
+        ${o.cidade ? `<p class="sub">${esc(o.cidade)}</p>` : ""}
+        <small class="sub">${plural(o.pontos, "ponto", "pontos")}${o.fotos != null ? " · " + plural(o.fotos, "foto", "fotos") : ""}${o.supervisor ? " · " + esc(o.supervisor) : ""}</small>
+        <div class="linha-topo">${o.selo}<small class="sub">alterada ${M.fmtHora(o.atualizada_em)}</small></div>
       </button>`;
-    };
-    // obras que estão no banco e não neste aparelho
-    const locais = new Set(estado.obras.map((o) => o.id));
-    const meu = estado.perfil?.user_id;
-    const doBanco = (estado.remotas || [])
-      .filter((r) => !locais.has(r.id) && r.supervisor_id === meu)
-      .map((r) => `<div class="cartao obra-item">
-        <div class="linha-topo"><span class="chip-obra chip-obra-banco"><small>OBRA</small><b>${esc(r.numero)}</b></span><b class="valor">${M.fmtMoeda(Number(r.total))}</b></div>
-        <small class="sub">${esc([r.local, r.municipio].filter(Boolean).join(" · "))}</small>
-        <small class="sub">${plural(r.qtd_pontos, "ponto", "pontos")} · ${esc(r.supervisor_nome || "")} · alterada ${M.fmtHora(r.atualizada_em)}</small>
-        <button type="button" class="botao botao-claro botao-pequeno" data-acao="trazer-obra" data-id="${r.id}">${r.supervisor_id === meu ? "Baixar para este celular" : "Abrir para consulta"}</button>
-      </div>`).join("");
     return `<div class="pagina">
       ${topo("", null, `<button type="button" class="link" data-acao="config">⚙ Ajustes</button>`)}
       <section class="saudacao">
@@ -297,22 +315,18 @@
         <h1>${sup ? esc(sup) : "Supervisor"}</h1>
         <p>Lance os serviços de cada ponto da obra e gere a medição no padrão do Termômetro.</p>
       </section>
-      ${!estado.online ? `<div class="faixa faixa-guardado">Sem internet: tudo fica guardado no celular e sobe para o banco quando o sinal voltar.</div>`
+      ${!estado.online ? `<div class="faixa faixa-guardado">Sem internet: aparecem só as obras guardadas no celular. O que você lançar sobe para o banco quando o sinal voltar.</div>`
         : pendentes ? `<div class="faixa faixa-guardado">${plural(pendentes, "obra aguardando", "obras aguardando")} envio ao banco${estado.enviando ? "… enviando" : ""}.</div>` : ""}
       <button type="button" class="botao botao-grande" data-acao="nova-obra">+ Nova obra</button>
       ${instalarHtml()}
       <section class="bloco">
-        <h2>Minhas obras neste celular</h2>
-        ${minhas.map(cartao).join("") || `<p class="vazio">Nenhuma obra ainda. Toque em <b>Nova obra</b> para começar.</p>`}
-      </section>
-      ${consultas.length ? `<section class="bloco"><h2>Abertas para consulta</h2>${consultas.map(cartao).join("")}</section>` : ""}
-      <section class="bloco">
-        <button type="button" class="botao botao-claro" data-acao="mostrar-banco">
-          ${estado.bancoAberto ? "▲ Esconder minhas obras no banco" : `▼ Mostrar minhas obras no banco${estado.remotas ? ` (${(estado.remotas || []).filter((r) => !locais.has(r.id) && r.supervisor_id === meu).length})` : ""}`}
-        </button>
-        ${!estado.bancoAberto ? "" : `<div class="linha-topo"><small class="sub">Obras suas que estão no banco e não neste celular.</small><button type="button" class="link" data-acao="atualizar-lista">⟳ Atualizar</button></div>
-        ${estado.remotas === null ? `<p class="vazio">${estado.online ? "Carregando…" : "Sem internet."}</p>`
-          : doBanco || `<p class="vazio">Nenhuma outra obra sua no banco.</p>`}`}
+        <div class="linha-topo"><h2>Obras ${todas.length ? `<small class="sub-inline">(${todas.length})</small>` : ""}</h2>
+          <button type="button" class="link" data-acao="atualizar-lista">⟳ Atualizar</button></div>
+        ${todas.length > 3 ? `<label class="campo"><input id="filtro-obra" type="search" value="${esc(estado.filtroObra || "")}" placeholder="Buscar pelo número, cidade ou supervisor" autocomplete="off"></label>` : ""}
+        <div id="lista-obras">${vistas.map(cartao).join("")
+          || (termos.length ? `<p class="vazio">Nenhuma obra encontrada.</p>`
+            : estado.remotas === null && estado.online ? `<p class="vazio">Carregando as obras do banco…</p>`
+              : `<p class="vazio">Nenhuma obra ainda. Toque em <b>Nova obra</b> para começar.</p>`)}</div>
       </section>
     </div>`;
   }
@@ -1022,7 +1036,19 @@
       }
       case "nova-obra": return novaObra();
       case "abrir-obra": {
-        estado.obra = await Banco.obterObra(alvo.dataset.id);
+        // obra que ainda não está no celular: traz do banco e abre, sem pedir nada
+        let obra = await Banco.obterObra(alvo.dataset.id);
+        if (!obra) {
+          if (!navigator.onLine) return avisar("Sem internet: essa obra ainda não está neste celular.", "erro");
+          try {
+            avisar("Abrindo a obra…", "guardado");
+            obra = await trazerObra(alvo.dataset.id);
+            $aviso.hidden = true;
+          } catch (err) {
+            return avisar(err.message, "erro");
+          }
+        }
+        estado.obra = obra;
         return irPara("obra");
       }
       case "editar-obra": return irPara("obra-form");
@@ -1133,6 +1159,15 @@
       t.className = !t.value ? "" : obraValida(t.value) ? "valido" : "invalido";
       document.getElementById("dica-numero").textContent =
         t.value && !obraValida(t.value) ? `Tem ${t.value.length} dígitos. Precisa de 8 ou 10.` : "";
+      return;
+    }
+    if (t.id === "filtro-obra") {
+      estado.filtroObra = t.value;
+      const foco = t.selectionStart;
+      render();
+      const novo = document.getElementById("filtro-obra");
+      novo.focus();
+      novo.setSelectionRange(foco, foco);
       return;
     }
     if (t.id === "p-busca") {
