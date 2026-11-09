@@ -231,25 +231,6 @@
     const todas = estado.obras || [];
     const lista = filtradas();
     const f = estado.filtro;
-    const total = lista.reduce((t, o) => t + Number(o.total || 0), 0);
-    const us = lista.reduce((t, o) => t + Number(o.total_us || 0), 0);
-    const pontos = lista.reduce((t, o) => t + Number(o.qtd_pontos || 0), 0);
-
-    // resumo por supervisor (no recorte dos filtros)
-    const porSup = new Map();
-    lista.forEach((o) => {
-      const k = o.supervisor_nome || "—";
-      const s = porSup.get(k) || { obras: 0, valor: 0, pontos: 0 };
-      s.obras++; s.valor += Number(o.total || 0); s.pontos += Number(o.qtd_pontos || 0);
-      porSup.set(k, s);
-    });
-    const maior = Math.max(1, ...[...porSup.values()].map((s) => s.valor));
-    const resumoSup = [...porSup.entries()].sort((a, b) => b[1].valor - a[1].valor).map(([nome, s]) => `<div class="sup-linha">
-        <b>${esc(nome)}</b><span class="valor">${M.fmtMoeda(s.valor)}</span>
-        <small>${s.obras} ${s.obras === 1 ? "obra" : "obras"} · ${s.pontos} pontos</small><span></span>
-        <div class="barra-sup"><i style="width:${(s.valor / maior) * 100}%"></i></div>
-      </div>`).join("");
-
     const linhas = lista.map((o) => `<tr data-abrir="${o.id}" class="${estado.aberta?.id === o.id ? "aberta" : ""}">
         <td><span class="chip-obra">${esc(o.numero)}</span></td>
         <td>${esc(o.municipio || "—")}</td>
@@ -278,26 +259,14 @@
           <label class="busca">Pesquisar obra <input id="f-busca" type="search" value="${esc(f.busca)}" placeholder="Número da obra, cidade ou supervisor"></label>
           <button type="button" class="mini" data-acao="atualizar">⟳ Atualizar</button>
         </section>
-        <section class="numeros">
-          <div class="numero"><small>Obras</small><b>${lista.length}</b></div>
-          <div class="numero"><small>Pontos medidos</small><b>${pontos}</b></div>
-          <div class="numero"><small>Total de US</small><b>${M.fmtNum(us)}</b></div>
-          <div class="numero numero-valor"><small>Valor medido</small><b>${M.fmtMoeda(total)}</b></div>
-        </section>
-        <div class="colunas">
           <section class="cartao">
             <h2>Obras medidas <small>${lista.length === todas.length ? `${todas.length}` : `${lista.length} de ${todas.length}`}</small></h2>
             <div class="rolagem"><table>
               <thead><tr>${th("numero", "Obra")}${th("municipio", "Cidade")}${th("supervisor_nome", "Supervisor")}${th("qtd_pontos", "Pontos", true)}${th("total_us", "US", true)}${th("total", "Valor", true)}${th("atualizada_em", "Alterada em")}<th>Medição</th></tr></thead>
               <tbody>${linhas}</tbody>
             </table></div>
-            ${estado.obras === null ? `<p class="vazio">Carregando…</p>` : !lista.length ? `<p class="vazio">Nenhuma obra ${todas.length ? "com esses filtros" : "medida ainda"}.</p>` : ""}
+            ${estado.obras === null ? `<p class="vazio">Carregando…</p>` : !lista.length ? `<p class="vazio">Nenhuma obra ${todas.length ? "encontrada" : "medida ainda"}.</p>` : ""}
           </section>
-          <section class="cartao sup">
-            <h2>Por supervisor</h2>
-            ${resumoSup || `<p class="vazio">—</p>`}
-          </section>
-        </div>
       </main>
       ${gavetaHtml()}
       ${usuariosHtml()}`;
