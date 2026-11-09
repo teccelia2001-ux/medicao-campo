@@ -1,0 +1,17 @@
+{
+  "name": "Medição de Campo - Teccel",
+  "short_name": "Medição",
+  "description": "Medição de obra em campo, ponto a ponto, com os códigos e valores do Termômetro.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f4f6f9",
+  "theme_color": "#e11414",
+  "lang": "pt-BR",
+  "icons": [
+    { "src": "icones/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icones/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icones/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
