@@ -352,12 +352,11 @@
         <b>Sua conta</b>
         <p class="sub">${esc(p.nome)} · ${esc(p.email)}${p.admin ? " · administrador" : ""}</p>
         <p class="sub">O nome que sai na medição é o do cadastro${p.admin ? "" : "; para corrigir, fale com o administrador"}.</p>
-        <a class="botao botao-claro" href="painel.html">📊 Painel de medições (todas as obras)</a>
         <button type="button" class="botao botao-perigo" data-acao="sair">Sair da conta</button>
       </section>
       ${p.admin ? `<section class="cartao dados">
         <b>Supervisores</b>
-        <p class="sub">Para dar acesso a um supervisor, crie a conta dele no Supabase (Authentication › Users › Add user, com e-mail e senha). Ele aparece aqui sozinho; ajuste o nome que sai na medição.</p>
+        <p class="sub">Para criar a conta de um supervisor ou trocar a senha, use o <b>Painel › 👥 Usuários</b>. Aqui dá para ajustar o nome que sai na medição e o acesso.</p>
         ${sups === null ? `<p class="vazio">Carregando…</p>` : sups.map((s) => `<div class="sup-linha">
           <input value="${esc(s.nome)}" data-sup-nome="${s.user_id}" aria-label="Nome de ${esc(s.email)}">
           <small class="sub">${esc(s.email)}</small>
@@ -365,15 +364,6 @@
           <label><input type="checkbox" data-sup-admin="${s.user_id}" ${s.admin ? "checked" : ""} ${s.user_id === p.user_id ? "disabled" : ""}> administrador</label>
         </div>`).join("")}
       </section>` : ""}
-      <section class="cartao dados">
-        <b>Catálogo de serviços</b>
-        <p class="sub">${M.SERVICOS.length} serviços do Termômetro, baixados do banco em ${M.fmtHora(M.catalogoGeradoEm)}.</p>
-        <button type="button" class="botao botao-claro botao-pequeno" data-acao="atualizar-catalogo">⟳ Baixar catálogo de novo</button>
-        <table class="tabela-us"><tr><th>Departamento</th><th>Valor da US (${M.anoUS(new Date().getFullYear())})</th></tr>
-          ${M.DEPARTAMENTOS.map((d) => `<tr><td>${esc(d)}</td><td>${M.fmtMoeda(M.valorUS(d))}</td></tr>`).join("")}
-        </table>
-        <p class="sub" id="espaco"></p>
-      </section>
     </div>`;
   }
 
@@ -971,10 +961,6 @@
         estado.supervisores = estado.perfil?.admin ? null : [];
         await irPara("config");
         carregarAjustes();
-        const esp = await Banco.espaco();
-        if (esp && document.getElementById("espaco")) {
-          document.getElementById("espaco").textContent = `Espaço usado no celular: ${(esp.usage / 1024 / 1024).toFixed(1)} MB.`;
-        }
         return;
       }
       case "sair": return sairDaConta();
@@ -996,14 +982,6 @@
           return avisar(err.message, "erro");
         }
       }
-      case "atualizar-catalogo":
-        try {
-          await baixarCatalogo();
-          avisar("Catálogo atualizado.");
-          return render();
-        } catch (err) {
-          return avisar(err.message, "erro");
-        }
       case "instalar": {
         if (window.pedidoInstalar) {
           window.pedidoInstalar.prompt();
@@ -1222,12 +1200,16 @@
   });
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") salvarAgora();
-    else enviarDepois(500);
+    else {
+      enviarDepois(500);
+      conferirCatalogo();
+    }
   });
   window.addEventListener("online", () => {
     estado.online = true;
     enviarDepois(500);
     buscarRemotas();
+    conferirCatalogo(true);
     if (estado.tela === "inicio") render();
   });
   window.addEventListener("offline", () => {
@@ -1285,6 +1267,29 @@
     M.usarCatalogo(cat);
     cacheGrupos.clear();
   }
+
+  /** Catálogo sempre igual ao do banco, sem botão: confere ao abrir o app, quando o
+   *  sinal volta, ao voltar para o app e a cada 15 min. O que já foi lançado guarda o
+   *  valor da época (regra do Termômetro); o novo vale para os próximos lançamentos. */
+  let catalogoConferidoEm = 0;
+  async function conferirCatalogo(forcar = false) {
+    if (!navigator.onLine || !Nuvem.lerSessao() || !estado.perfil) return;
+    if (!forcar && Date.now() - catalogoConferidoEm < 5 * 60000) return;
+    catalogoConferidoEm = Date.now();
+    try {
+      const novo = await Nuvem.catalogo();
+      if (!novo.servicos.length) return;
+      const atual = await Banco.ler("catalogo");
+      const chave = (c) => (c ? JSON.stringify([c.valor_us, c.servicos]) : "");
+      if (chave(novo) === chave(atual)) return;
+      await Banco.gravar("catalogo", novo);
+      M.usarCatalogo(novo);
+      cacheGrupos.clear();
+      // refaz a tela só se ninguém estiver digitando ou com a janela de quantidade aberta
+      if (!estado.escolhido && !document.activeElement?.matches?.("input, textarea")) render();
+    } catch (e) { /* tenta na próxima */ }
+  }
+  setInterval(() => conferirCatalogo(true), 15 * 60000);
 
   async function sairDaConta(forcado = false) {
     if (!forcado) {
@@ -1352,6 +1357,7 @@
       }).catch(() => {});
       await enviarPendentes();
       buscarRemotas();
+      conferirCatalogo(true);
     }
   }
 
