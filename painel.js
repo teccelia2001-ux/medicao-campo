@@ -231,8 +231,6 @@
     const todas = estado.obras || [];
     const lista = filtradas();
     const f = estado.filtro;
-    const sups = [...new Set(todas.map((o) => o.supervisor_nome).filter(Boolean))].sort();
-    const cidades = [...new Set(todas.map((o) => o.municipio).filter(Boolean))].sort();
     const total = lista.reduce((t, o) => t + Number(o.total || 0), 0);
     const us = lista.reduce((t, o) => t + Number(o.total_us || 0), 0);
     const pontos = lista.reduce((t, o) => t + Number(o.qtd_pontos || 0), 0);
@@ -277,12 +275,7 @@
       </header>
       <main class="conteudo">
         <section class="filtros">
-          <label class="busca">Buscar <input id="f-busca" type="search" value="${esc(f.busca)}" placeholder="Número da obra, cidade ou supervisor"></label>
-          <label>Supervisor <select id="f-supervisor">${opcoes(sups, f.supervisor, "Todos")}</select></label>
-          <label>Cidade <select id="f-cidade">${opcoes(cidades, f.cidade, "Todas")}</select></label>
-          <label>Alterada de <input id="f-de" type="date" value="${esc(f.de)}"></label>
-          <label>até <input id="f-ate" type="date" value="${esc(f.ate)}"></label>
-          <button type="button" class="mini" data-acao="limpar">Limpar filtros</button>
+          <label class="busca">Pesquisar obra <input id="f-busca" type="search" value="${esc(f.busca)}" placeholder="Número da obra, cidade ou supervisor"></label>
           <button type="button" class="mini" data-acao="atualizar">⟳ Atualizar</button>
         </section>
         <section class="numeros">

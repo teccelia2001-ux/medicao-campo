@@ -188,3 +188,6 @@ tbody tr.aberta { background: #ffecec; }
 .usuario-nome:hover, .usuario-nome:focus { border-color: var(--borda-campo); background: #fff; outline: 0; }
 .nova-senha { display: flex; gap: 6px; }
 .nova-senha input { min-height: 32px; padding: 4px 8px; border: 1px solid var(--borda-campo); border-radius: 8px; font: inherit; }
+/* só a pesquisa de obra */
+.filtros .busca { flex: 1 1 360px; max-width: 520px; }
+.filtros .busca input { width: 100%; }
