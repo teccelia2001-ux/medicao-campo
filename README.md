@@ -28,21 +28,18 @@ Igual ao Termômetro: `quantidade x US do serviço x valor da US do departamento
 no ano`, arredondado por linha. O valor da US fica gravado no item na hora do
 lançamento.
 
-## Atualizar o catálogo
-O catálogo (`catalogo.js`) é uma cópia de `termo_servicos` e `termo_us` do banco
-do Termômetro. Se mudar código, US ou valor lá, gere de novo:
-
-```
-py -I ferramentas\gerar_catalogo.py "C:\Users\Compras\OneDrive\Documentos\Teccel Engenharia\sistema-programacao-teccel\backend\teccel.db" catalogo.js
-```
-
-Depois suba a `VERSAO` em `sw.js` para os celulares pegarem a nova cópia.
+## Banco (Supabase "setor_de_qualidade")
+Cada supervisor entra com conta própria (criada em Authentication › Users). Obras,
+pontos e fotos sobem sozinhos quando há sinal; sem sinal ficam no celular.
+O catálogo e os valores da US ficam no banco e só são lidos com login.
+Os SQL e a ferramenta que gera o catálogo ficam fora deste repositório.
 
 ## Arquivos
 - `index.html`, `app.css`, `app.js`: telas.
 - `medicao.js`: contas e geração do Excel/PDF (cópia fiel de
   `exportacao_termometro.py`: seções, categorias, ordem, cores e colunas).
 - `banco.js`: banco do aparelho.
+- `nuvem.js` e `config.js`: login e envio ao Supabase.
 - `sw.js`, `manifest.webmanifest`, `icones/`: app instalável e sem internet.
 - Bibliotecas pelo cdnjs: ExcelJS 4.4.0, jsPDF 2.5.1, jsPDF-AutoTable 3.8.2.
 
