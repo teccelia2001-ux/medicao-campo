@@ -303,7 +303,6 @@
   }
 
   function telaInicio() {
-    const sup = estado.perfil?.nome;
     const pendentes = estado.obras.filter((o) => o.pendente && !soLeitura(o)).length;
     const termos = normalizar(estado.filtroObra || "").split(/\s+/).filter(Boolean);
     const todas = obrasDaLista();
@@ -317,12 +316,7 @@
         <div class="linha-topo">${o.selo}<small class="sub">alterada ${M.fmtHora(o.atualizada_em)}</small></div>
       </button>`;
     return `<div class="pagina pagina-larga">
-      ${topo("", null, `<button type="button" class="link" data-acao="config">⚙ Ajustes</button>`)}
-      <section class="saudacao">
-        <small>Medição de campo</small>
-        <h1>${sup ? esc(sup) : "Supervisor"}</h1>
-        <p>Lance os serviços de cada ponto da obra e gere a medição no padrão do Termômetro.</p>
-      </section>
+      ${topo("", null, `<nav class="troca" aria-label="Trocar entre app e painel"><span class="ativo">📱 App</span><a href="painel.html">📊 Painel</a></nav><button type="button" class="link link-ajustes" data-acao="config" aria-label="Ajustes">⚙<span> Ajustes</span></button>`)}
       ${!estado.online ? `<div class="faixa faixa-guardado">Sem internet: aparecem só as obras guardadas no celular. O que você lançar sobe para o banco quando o sinal voltar.</div>`
         : pendentes ? `<div class="faixa faixa-guardado">${estado.enviando ? "⟳ Enviando" : "⏳ Aguardando envio de"} ${plural(pendentes, "obra", "obras")} ao banco…</div>`
           : `<div class="faixa faixa-ok">✓ Tudo salvo no banco</div>`}

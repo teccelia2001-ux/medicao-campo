@@ -563,3 +563,16 @@ a.botao { text-decoration: none; }
   /* formulários e ajustes um pouco mais largos */
   .pagina:not(.pagina-larga):not(.pagina-entrar) { max-width: 680px; }
 }
+
+/* troca entre app e painel */
+.topo-dir { display: flex; align-items: center; gap: 6px; }
+.troca { display: inline-flex; padding: 3px; border: 1px solid var(--borda-campo); border-radius: 999px; background: #fff; }
+.troca a, .troca span { padding: 5px 11px; border-radius: 999px; font-size: 13px; font-weight: 700; white-space: nowrap; text-decoration: none; color: #475569; }
+.troca .ativo { background: var(--vermelho); color: #fff; }
+.troca a:hover { color: var(--vermelho); }
+@media (max-width: 380px) {
+  .troca a, .troca span { padding: 5px 8px; font-size: 12px; }
+  .topo-dir .link { font-size: 13px; padding: 6px 2px; }
+}
+.link-ajustes { white-space: nowrap; }
+@media (max-width: 400px) { .link-ajustes span { display: none; } .link-ajustes { font-size: 18px !important; } }

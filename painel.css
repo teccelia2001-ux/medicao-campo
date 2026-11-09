@@ -191,3 +191,9 @@ tbody tr.aberta { background: #ffecec; }
 /* só a pesquisa de obra */
 .filtros .busca { flex: 1 1 360px; max-width: 520px; }
 .filtros .busca input { width: 100%; }
+
+/* troca entre app e painel */
+.troca { display: inline-flex; padding: 3px; border: 1px solid var(--borda-campo); border-radius: 999px; background: #fff; }
+.troca a, .troca span { padding: 5px 12px; border-radius: 999px; font-size: 13px; font-weight: 700; white-space: nowrap; text-decoration: none; color: #475569; }
+.troca .ativo { background: var(--vermelho); color: #fff; }
+.troca a:hover { color: var(--vermelho); }

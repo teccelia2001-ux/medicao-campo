@@ -251,7 +251,7 @@
         <span class="espaco"></span>
         <span class="quem">${esc(estado.perfil?.nome || "")}</span>
         ${estado.perfil?.admin ? `<button type="button" class="link" data-acao="usuarios">👥 Usuários</button>` : ""}
-        <a class="link" href="./">Abrir o app</a>
+        <nav class="troca" aria-label="Trocar entre app e painel"><a href="./">📱 App</a><span class="ativo">📊 Painel</span></nav>
         <button type="button" class="link" data-acao="sair">Sair</button>
       </header>
       <main class="conteudo">
