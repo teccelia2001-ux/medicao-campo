@@ -316,7 +316,7 @@
         <small class="sub">${plural(o.pontos, "ponto", "pontos")}${o.fotos != null ? " · " + plural(o.fotos, "foto", "fotos") : ""}${o.supervisor ? " · " + esc(o.supervisor) : ""}</small>
         <div class="linha-topo">${o.selo}<small class="sub">alterada ${M.fmtHora(o.atualizada_em)}</small></div>
       </button>`;
-    return `<div class="pagina">
+    return `<div class="pagina pagina-larga">
       ${topo("", null, `<button type="button" class="link" data-acao="config">⚙ Ajustes</button>`)}
       <section class="saudacao">
         <small>Medição de campo</small>
@@ -418,7 +418,7 @@
         ${p.obs ? `<small class="sub">${esc(p.obs)}</small>` : ""}
       </button>`;
     }).join("");
-    return `<div class="pagina pagina-form">
+    return `<div class="pagina pagina-form pagina-larga">
       ${topo("Obra", "inicio", soLeitura(o) ? "" : `<button type="button" class="link" data-acao="editar-obra">Editar</button>`)}
       <div class="linha-topo"><span id="selo-obra">${seloHtml(o)}</span>${o.enviada_em ? `<small class="sub">no banco desde ${M.fmtHora(o.enviada_em)}</small>` : ""}</div>
       ${soLeitura(o) ? `<div class="faixa faixa-consulta">Obra de ${esc(o.supervisor_nome || "outro supervisor")}: aberta só para consulta e para gerar a medição.</div>` : ""}
@@ -433,7 +433,7 @@
       ${soLeitura(o) ? "" : `<button type="button" class="botao botao-grande" data-acao="novo-ponto">+ Novo ponto <small>${esc(proximoNome(o))}</small></button>`}
       <section class="bloco">
         <h2>Pontos da obra</h2>
-        ${pontos || `<p class="vazio">Nenhum ponto ainda. Cada poste ou trecho é um ponto (P1, P2...).</p>`}
+        ${pontos ? `<div class="grade-pontos">${pontos}</div>` : `<p class="vazio">Nenhum ponto ainda. Cada poste ou trecho é um ponto (P1, P2...).</p>`}
       </section>
       <section class="bloco acoes-obra">
         <button type="button" class="botao botao-perigo" data-acao="excluir-obra">${soLeitura(o) ? "Tirar deste celular" : "Excluir obra"}</button>
@@ -559,13 +559,14 @@
     const idx = o.pontos.indexOf(p);
     const u = p.gps ? M.utm(p.gps.lat, p.gps.lng) : null;
 
-    return `<div class="pagina pagina-form">
+    return `<div class="pagina pagina-form pagina-larga">
       ${topo(p.nome, "obra", `<span class="topo-equipe">Obra ${esc(o.numero)}</span>`)}
       ${outros ? `<div class="navega">
         <button type="button" class="link" data-acao="ponto-ant" ${idx === 0 ? "disabled" : ""}>‹ ${idx > 0 ? esc(o.pontos[idx - 1].nome) : ""}</button>
         <small>${idx + 1} de ${o.pontos.length}</small>
         <button type="button" class="link" data-acao="ponto-prox" ${idx === o.pontos.length - 1 ? "disabled" : ""}>${idx < o.pontos.length - 1 ? esc(o.pontos[idx + 1].nome) : ""} ›</button>
       </div>` : ""}
+      <div class="ponto-colunas"><div class="ponto-col">
       <fieldset class="conjunto" ${soLeitura(o) ? "disabled" : ""}>
       <section class="cartao dados">
         <label class="campo">Ponto
@@ -590,6 +591,7 @@
         <div id="resultados">${resultadosHtml()}</div>` : ""}
         ${rapidosHtml(p)}
       </section>
+      </div><div class="ponto-col">
 
       <fieldset class="conjunto" ${soLeitura(o) ? "disabled" : ""}>
       ${secoes || `<p class="vazio">Nenhum serviço lançado neste ponto.</p>`}
@@ -605,6 +607,7 @@
       </section>
 
       ${soLeitura(o) ? "" : `<button type="button" class="botao botao-perigo botao-pequeno" data-acao="excluir-ponto">Excluir ponto ${esc(p.nome)}</button>`}
+      </div></div>
 
       <div class="rodape">
         <div class="rodape-total"><span>Total do ponto</span><b id="total-ponto">${M.fmtMoeda(tp.valor)}</b></div>
@@ -670,7 +673,7 @@
       </div>`).join("")}
     </section>`).join("");
     const arq = estado.arquivo;
-    return `<div class="pagina pagina-form">
+    return `<div class="pagina pagina-form pagina-larga">
       ${topo("Medição", "obra")}
       <div class="chips">
         <span class="chip-obra"><small>OBRA</small><b>${esc(o.numero)}</b></span>
@@ -680,6 +683,7 @@
       </div>
       ${semServico.length ? `<div class="faixa faixa-guardado">Sem serviço: ${esc(semServico.map((p) => p.nome).join(", "))}. Eles saem só no PDF, com as fotos.</div>` : ""}
       ${semFoto.length ? `<div class="faixa faixa-guardado">Sem foto: ${esc(semFoto.map((p) => p.nome).join(", "))}.</div>` : ""}
+      <div class="medicao-colunas"><div class="medicao-col">
       <section class="cartao dados">
         <b>Gerar arquivo</b>
         <p class="sub">Mesma estrutura do fechamento simplificado do Termômetro. A planilha traz também uma aba com a medição de cada ponto; o PDF traz cada ponto com as fotos.</p>
@@ -697,8 +701,10 @@
           </div>
         </div>` : ""}
       </section>
+      </div><div class="medicao-col">
       <h2 class="titulo-resumo">Conferência</h2>
       ${resumo}
+      </div></div>
     </div>`;
   }
   const dataExec = (o) => {
