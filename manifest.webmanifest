@@ -2,6 +2,7 @@
   "name": "Medição de Campo - Teccel",
   "short_name": "Medição",
   "description": "Medição de obra em campo, ponto a ponto, com os códigos e valores do Termômetro.",
+  "id": "./",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
