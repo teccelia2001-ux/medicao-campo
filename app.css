@@ -577,3 +577,12 @@ a.botao { text-decoration: none; }
 .link-ajustes { white-space: nowrap; }
 @media (max-width: 400px) { .link-ajustes span { display: none; } .link-ajustes { font-size: 18px !important; } }
 @media (min-width: 900px) { .campo-pesquisa input { max-width: 520px; } }
+
+/* fotos: salvar no celular */
+.visor-acoes { grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)) !important; }
+.link-galeria { align-self: center; font-size: 14px; }
+.chave-linha { display: flex; align-items: flex-start; gap: 10px; font-size: 14px; font-weight: 600; }
+.chave-linha input { width: 22px; height: 22px; margin-top: 1px; accent-color: var(--vermelho); flex: none; }
+.chave-linha small { display: block; font-weight: 400; color: var(--suave); }
+.visor-acoes { grid-template-columns: 1fr 1fr !important; }
+.visor-acoes > [data-acao="foto-galeria"] { grid-column: 1 / -1; }

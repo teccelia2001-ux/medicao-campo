@@ -354,6 +354,14 @@
         <p class="sub">O nome que sai na medição é o do cadastro${p.admin ? "" : "; para corrigir, fale com o administrador"}.</p>
         <button type="button" class="botao botao-perigo" data-acao="sair">Sair da conta</button>
       </section>
+      <section class="cartao dados">
+        <b>Fotos</b>
+        ${ehIos()
+          ? `<p class="sub">No iPhone o app não consegue salvar sozinho na galeria. No ponto, toque em <b>💾 Salvar as fotos no celular</b> e escolha <b>Salvar imagens</b>.</p>`
+          : `<label class="chave-linha"><input type="checkbox" data-acao="copia-fotos" ${copiaLigada() ? "checked" : ""}>
+              <span>Salvar uma cópia de cada foto tirada no celular <small>(pasta Download, aparece na galeria)</small></span></label>`}
+        <p class="sub">As fotos também ficam guardadas no app e sobem para o banco.</p>
+      </section>
       ${p.admin ? `<section class="cartao dados">
         <b>Supervisores</b>
         <p class="sub">Para criar a conta de um supervisor ou trocar a senha, use o <b>Painel › 👥 Usuários</b>. Aqui dá para ajustar o nome que sai na medição e o acesso.</p>
@@ -594,10 +602,11 @@
 
       <section class="cartao dados">
         <div class="linha-topo"><b>Fotos do ponto</b><small class="sub">${plural(p.fotos.length, "foto", "fotos")}</small></div>
-        ${fotos ? `<div class="fotos">${fotos}</div>` : ""}
+        ${fotos ? `<div class="fotos">${fotos}</div>
+        <button type="button" class="link link-galeria" data-acao="fotos-galeria">💾 Salvar ${p.fotos.length === 1 ? "a foto" : `as ${p.fotos.length} fotos`} no celular</button>` : ""}
         <div class="dupla" ${soLeitura(o) ? "hidden" : ""}>
-          <label class="botao">📷 Tirar foto<input type="file" accept="image/*" capture="environment" data-acao="foto" hidden></label>
-          <label class="botao botao-claro">🖼 Galeria<input type="file" accept="image/*" multiple data-acao="foto" hidden></label>
+          <label class="botao">📷 Tirar foto<input type="file" accept="image/*" capture="environment" data-acao="foto" data-origem="camera" hidden></label>
+          <label class="botao botao-claro">🖼 Galeria<input type="file" accept="image/*" multiple data-acao="foto" data-origem="galeria" hidden></label>
         </div>
       </section>
 
@@ -647,6 +656,7 @@
     return `<div class="visor">
       <img src="${url || ""}" alt="Foto do ponto">
       <div class="visor-acoes">
+        <button type="button" class="botao" data-acao="foto-galeria">💾 Salvar na galeria</button>
         ${soLeitura(estado.obra) ? "<span></span>" : `<button type="button" class="botao botao-perigo" data-acao="excluir-foto">Excluir foto</button>`}
         <button type="button" class="botao botao-claro" data-acao="fechar-foto">Fechar</button>
       </div>
@@ -724,23 +734,15 @@
     });
   }
 
-  /** Reduz a foto e grava na parte de baixo a obra, o ponto, a data/hora e o GPS. */
-  async function prepararFoto(arquivo, o, p) {
-    const img = await abrirImagem(arquivo);
-    const w0 = img.width, h0 = img.height;
-    const esc1 = Math.min(1, FOTO_MAX / Math.max(w0, h0));
-    const w = Math.round(w0 * esc1), h = Math.round(h0 * esc1);
+  /** Desenha a foto no tamanho pedido com a faixa da obra, do ponto, da data/hora e da coordenada. */
+  async function carimbar(img, max, qualidade, linhas) {
+    const esc1 = Math.min(1, max / Math.max(img.width, img.height));
+    const w = Math.round(img.width * esc1), h = Math.round(img.height * esc1);
     const cv = document.createElement("canvas");
     cv.width = w;
     cv.height = h;
     const ctx = cv.getContext("2d");
     ctx.drawImage(img, 0, 0, w, h);
-    if (img.close) img.close();
-    const agora = new Date();
-    const linhas = [
-      `OBRA ${o.numero} · ${p.nome}`,
-      `${agora.toLocaleDateString("pt-BR")} ${agora.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}${p.gps ? ` · ${M.fmtUtm(p.gps)}` : ""}`,
-    ];
     const fs = Math.max(14, Math.round(Math.min(w, h) * 0.032));
     const alt = fs * 1.35 * linhas.length + fs * 0.6;
     ctx.fillStyle = "rgba(0,0,0,0.55)";
@@ -749,20 +751,70 @@
     ctx.font = `600 ${fs}px system-ui, -apple-system, Segoe UI, Roboto, sans-serif`;
     ctx.textBaseline = "top";
     linhas.forEach((t, k) => ctx.fillText(t, fs * 0.6, h - alt + fs * 0.3 + k * fs * 1.35));
-    const blob = await new Promise((ok) => cv.toBlob(ok, "image/jpeg", 0.78));
-    return { blob, largura: w, altura: h, criada_em: agora.toISOString() };
+    const blob = await new Promise((ok) => cv.toBlob(ok, "image/jpeg", qualidade));
+    return { blob, largura: w, altura: h };
   }
 
-  async function receberFotos(arquivos) {
+  /** Reduz a foto e grava na parte de baixo a obra, o ponto, a data/hora e o GPS.
+   *  Com `copia`, devolve também uma versão maior para guardar na galeria do celular. */
+  async function prepararFoto(arquivo, o, p, { copia = false } = {}) {
+    const img = await abrirImagem(arquivo);
+    const agora = new Date();
+    const linhas = [
+      `OBRA ${o.numero} · ${p.nome}`,
+      `${agora.toLocaleDateString("pt-BR")} ${agora.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}${p.gps ? ` · ${M.fmtUtm(p.gps)}` : ""}`,
+    ];
+    const app = await carimbar(img, FOTO_MAX, 0.78, linhas);
+    const grande = copia ? await carimbar(img, 2560, 0.9, linhas) : null;
+    if (img.close) img.close();
+    return { ...app, criada_em: agora.toISOString(), copia: grande?.blob || null };
+  }
+
+  // ---------------------------------------------------------------- cópia na galeria do celular
+  const ehIos = () => /iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const copiaLigada = () => {
+    try { return localStorage.getItem("medicao_copia_fotos") !== "nao"; } catch (e) { return true; }
+  };
+  const doisDig = (n) => String(n).padStart(2, "0");
+  function nomeFoto(o, p, iso, k = 0) {
+    const d = new Date(iso);
+    const quando = `${d.getFullYear()}${doisDig(d.getMonth() + 1)}${doisDig(d.getDate())}_${doisDig(d.getHours())}${doisDig(d.getMinutes())}${doisDig(d.getSeconds())}`;
+    return `OBRA_${o.numero}_${String(p.nome).replace(/[^\w-]+/g, "")}_${quando}${k ? "_" + k : ""}.jpg`;
+  }
+  /** Fotos para a galeria: no iPhone abre o compartilhar (Salvar imagem); no Android baixa
+   *  para a pasta Download, que aparece na galeria. Precisa vir de um toque na tela. */
+  async function guardarNoCelular(arquivos) {
+    const files = arquivos.map((a) => new File([a.blob], a.nome, { type: "image/jpeg" }));
+    try {
+      if (navigator.canShare && navigator.canShare({ files }) && (ehIos() || files.length > 1)) {
+        await navigator.share({ files, title: "Fotos da medição" });
+        return true;
+      }
+    } catch (e) {
+      if (e.name === "AbortError") return false;
+    }
+    arquivos.forEach((a, k) => setTimeout(() => baixar(a.blob, a.nome), k * 400));
+    return true;
+  }
+
+  async function receberFotos(arquivos, origem = "galeria") {
     const o = estado.obra, p = ponto();
     if (!arquivos.length || !p) return;
     avisar(arquivos.length > 1 ? `Guardando ${arquivos.length} fotos…` : "Guardando foto…", "guardado");
+    // foto tirada agora pela câmera não fica na galeria sozinha: o app guarda uma cópia
+    // (a escolhida da galeria já está lá). No iPhone isso só dá com um toque: botão no ponto.
+    const copiar = origem === "camera" && copiaLigada() && !ehIos();
     let ok = 0;
     for (const a of arquivos) {
       try {
-        const pronta = await prepararFoto(a, o, p);
-        const foto = { id: novoId(), obraId: o.id, pontoId: p.id, gps: p.gps || null, ...pronta };
+        const { copia, ...pronta } = await prepararFoto(a, o, p, { copia: copiar });
+        const foto = { id: novoId(), obraId: o.id, pontoId: p.id, gps: p.gps || null, ...pronta, origem, na_galeria: origem === "galeria" };
         await Banco.salvarFoto(foto);
+        if (copia) {
+          baixar(copia, nomeFoto(o, p, foto.criada_em, ok));
+          foto.na_galeria = true;
+          await Banco.salvarFoto(foto);
+        }
         p.fotos.push(foto.id);
         estado.miniaturas.set(foto.id, URL.createObjectURL(foto.blob));
         ok++;
@@ -772,7 +824,8 @@
     }
     await salvarAgora();
     render();
-    avisar(ok === arquivos.length ? (ok > 1 ? `${ok} fotos guardadas.` : "Foto guardada.") : `Guardadas ${ok} de ${arquivos.length} fotos.`, ok ? "ok" : "erro");
+    const msg = ok === arquivos.length ? (ok > 1 ? `${ok} fotos guardadas` : "Foto guardada") : `Guardadas ${ok} de ${arquivos.length} fotos`;
+    avisar(copiar && ok ? `${msg} e cópia salva no celular (pasta Download).` : `${msg}.`, ok ? "ok" : "erro");
   }
 
   function marcarGps() {
@@ -1089,6 +1142,32 @@
       case "fechar-foto":
         estado.foto = null;
         return render();
+      case "foto-galeria": {
+        const f = await fotoLocal(o, estado.foto.id);
+        if (!f) return avisar("A foto ainda não está neste celular.", "erro");
+        const p = ponto();
+        if (await guardarNoCelular([{ blob: f.blob, nome: nomeFoto(o, p, f.criada_em) }])) {
+          f.na_galeria = true;
+          await Banco.salvarFoto(f);
+          avisar(ehIos() ? "Escolha Salvar imagem para guardar na galeria." : "Foto salva no celular (pasta Download).");
+        }
+        return;
+      }
+      case "fotos-galeria": {
+        const p = ponto();
+        const lista = [];
+        for (const [k, id] of p.fotos.entries()) {
+          const f = await fotoLocal(o, id);
+          if (f) lista.push({ f, blob: f.blob, nome: nomeFoto(o, p, f.criada_em, k + 1) });
+        }
+        if (!lista.length) return avisar("Nenhuma foto deste ponto está no celular.", "erro");
+        if (await guardarNoCelular(lista)) {
+          for (const x of lista) { x.f.na_galeria = true; await Banco.salvarFoto(x.f); }
+          avisar(ehIos() ? "Escolha Salvar imagens para guardar na galeria." : `${lista.length} ${lista.length === 1 ? "foto salva" : "fotos salvas"} no celular (pasta Download).`);
+        }
+        return;
+      }
+
       case "excluir-foto": {
         if (soLeitura(o) || !confirm("Excluir esta foto?")) return;
         const p = ponto();
@@ -1164,7 +1243,11 @@
     if (t.dataset.acao === "foto") {
       const arquivos = [...t.files];
       t.value = "";
-      return receberFotos(arquivos);
+      return receberFotos(arquivos, t.dataset.origem || "galeria");
+    }
+    if (t.dataset.acao === "copia-fotos") {
+      try { localStorage.setItem("medicao_copia_fotos", t.checked ? "sim" : "nao"); } catch (err) { /* sem espaço */ }
+      return avisar(t.checked ? "Cada foto tirada vai ganhar uma cópia no celular." : "Cópia no celular desligada.");
     }
     if (p && t.id === "p-dia") {
       if (!t.value || t.value > hoje()) { t.value = p.dia; return avisar("A data não pode ser futura.", "erro"); }
