@@ -50,14 +50,10 @@
       }
       return operar("obras", "readwrite", (s) => s.put(obra));
     },
-    async excluirObra(id) {
-      const fotos = await this.fotosDaObra(id);
-      await operar("fotos", "readwrite", (s) => fotos.forEach((f) => s.delete(f.id)));
-      return operar("obras", "readwrite", (s) => s.delete(id));
-    },
+    /** tira a obra; as fotos dela continuam guardadas no aparelho (nunca se perde foto) */
+    excluirObra: (id) => operar("obras", "readwrite", (s) => s.delete(id)),
     salvarFoto: (foto) => operar("fotos", "readwrite", (s) => s.put(foto)),
     obterFoto: (id) => operar("fotos", "readonly", (s) => s.get(id)),
-    excluirFoto: (id) => operar("fotos", "readwrite", (s) => s.delete(id)),
     fotosDaObra: (obraId) => operar("fotos", "readonly", (s) => s.index("obra").getAll(obraId)),
     todasFotos: () => operar("fotos", "readonly", (s) => s.getAll()),
     /** o navegador não apaga nada sozinho quando o celular fica sem espaço */

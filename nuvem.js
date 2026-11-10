@@ -156,24 +156,26 @@
   const listarFotos = async (obraId) =>
     (await chamar("/storage/v1/object/list/medicao-fotos", { metodo: "POST", corpo: { prefix: `${obraId}/`, limit: 1000 } }))
       .map((o) => o.name.replace(/\.jpg$/, ""));
-  const apagarFotos = (obraId, ids) =>
-    ids.length
-      ? chamar("/storage/v1/object/medicao-fotos", { metodo: "DELETE", corpo: { prefixes: ids.map((id) => caminhoFoto(obraId, id)) } })
-      : Promise.resolve();
+  /** Sobe toda foto da obra que ainda não está no banco, inclusive a de ponto ou foto
+   *  excluída: foto tirada nunca é apagada, nem do celular nem do banco. */
+  async function enviarFotos(obraId) {
+    const fotos = await Banco.fotosDaObra(obraId);
+    for (const f of fotos) {
+      if (f.enviada) continue;
+      await enviarFoto(obraId, f);
+      f.enviada = true;
+      await Banco.salvarFoto(f);
+    }
+    return fotos;
+  }
 
-  /** Manda uma obra: primeiro as fotos que faltam, depois o documento, e por fim
-   *  apaga do banco as fotos que o supervisor excluiu. */
+  /** Manda uma obra: primeiro as fotos que faltam, depois o documento. */
   async function enviarObra(obra, totais) {
-    const fotosLocais = await Banco.fotosDaObra(obra.id);
+    const fotosLocais = await enviarFotos(obra.id);
     const usadas = new Set(obra.pontos.flatMap((p) => p.fotos));
     const infos = {};
     for (const f of fotosLocais) {
       if (!usadas.has(f.id)) continue;
-      if (!f.enviada) {
-        await enviarFoto(obra.id, f);
-        f.enviada = true;
-        await Banco.salvarFoto(f);
-      }
       infos[f.id] = { pontoId: f.pontoId, criada_em: f.criada_em, gps: f.gps || null, largura: f.largura, altura: f.altura };
     }
     // foto que veio do banco e ainda não foi baixada neste aparelho
@@ -189,10 +191,6 @@
         qtd_pontos: obra.pontos.length, criada_em: obra.criada_em, atualizada_em: obra.atualizada_em,
       },
     });
-    try {
-      const noBanco = await listarFotos(obra.id);
-      await apagarFotos(obra.id, noBanco.filter((id) => !usadas.has(id)));
-    } catch (e) { /* limpeza fica para o próximo envio */ }
     // só marca como enviada se ninguém mexeu na obra enquanto ela subia
     const atual = await Banco.obterObra(obra.id);
     if (atual && atual.atualizada_em === enviadoEm) {
@@ -206,6 +204,6 @@
 
   window.Nuvem = {
     configurada, ErroNuvem, lerSessao, entrar, sair, meuPerfil, catalogo, supervisores, alterarSupervisor, criarUsuario, trocarSenha,
-    listarObras, baixarObra, apagarObra, enviarObra, baixarFoto, listarFotos, apagarFotos,
+    listarObras, baixarObra, apagarObra, enviarObra, enviarFotos, baixarFoto, listarFotos,
   };
 })();

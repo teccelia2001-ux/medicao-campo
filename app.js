@@ -141,7 +141,8 @@
       const exclusoes = await Banco.ler("exclusoes", []);
       for (const id of [...exclusoes]) {
         try {
-          await Nuvem.apagarFotos(id, await Nuvem.listarFotos(id));
+          // a obra sai do banco, mas as fotos dela ficam: sobe antes as que faltam
+          await Nuvem.enviarFotos(id);
           await Nuvem.apagarObra(id);
           exclusoes.splice(exclusoes.indexOf(id), 1);
           await Banco.gravar("exclusoes", exclusoes);
@@ -1231,8 +1232,7 @@
       }
       case "excluir-ponto": {
         const p = ponto();
-        if (!confirm(`Excluir o ponto ${p.nome}? Os serviços e as ${p.fotos.length} fotos dele serão apagados.`)) return;
-        for (const id of p.fotos) await Banco.excluirFoto(id);
+        if (!confirm(`Excluir o ponto ${p.nome}? Os serviços dele saem da medição.${p.fotos.length ? ` As ${plural(p.fotos.length, "foto", "fotos")} continuam guardadas no celular e no banco.` : ""}`)) return;
         o.pontos = o.pontos.filter((x) => x.id !== p.id);
         return irPara("obra");
       }
@@ -1243,10 +1243,11 @@
           estado.obra = null;
           return irPara("inicio");
         }
-        if (!confirm(`Excluir a obra ${o.numero}? Pontos, serviços e fotos serão apagados deste celular E DO BANCO, e não dá para desfazer.`)) return;
-        if (o.pontos.length && !confirm("Tem certeza? Se ainda não gerou a medição, tudo será perdido.")) return;
+        if (!confirm(`Excluir a obra ${o.numero}? Pontos e serviços serão apagados deste celular e do banco, e não dá para desfazer. As fotos continuam guardadas no celular e no banco.`)) return;
+        if (o.pontos.length && !confirm("Tem certeza? Se ainda não gerou a medição, os serviços lançados serão perdidos.")) return;
         await Banco.excluirObra(o.id);
-        if (o.enviada_em || !o.pendente) {
+        {
+          // sempre entra na fila: além de tirar a obra do banco, sobe as fotos que faltam
           const exclusoes = await Banco.ler("exclusoes", []);
           if (!exclusoes.includes(o.id)) exclusoes.push(o.id);
           await Banco.gravar("exclusoes", exclusoes);
@@ -1325,9 +1326,8 @@
       }
 
       case "excluir-foto": {
-        if (soLeitura(o) || !confirm("Excluir esta foto?")) return;
+        if (soLeitura(o) || !confirm("Tirar esta foto do ponto? Ela sai da medição, mas continua guardada no celular e no banco.")) return;
         const p = ponto();
-        await Banco.excluirFoto(estado.foto.id);
         p.fotos = p.fotos.filter((id) => id !== estado.foto.id);
         estado.foto = null;
         await salvarAgora();
