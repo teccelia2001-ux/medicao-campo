@@ -320,7 +320,7 @@
       ${!estado.online ? `<div class="faixa faixa-guardado">Sem internet: aparecem só as obras guardadas no celular. O que você lançar sobe para o banco quando o sinal voltar.</div>`
         : pendentes ? `<div class="faixa faixa-guardado">${estado.enviando ? "⟳ Enviando" : "⏳ Aguardando envio de"} ${plural(pendentes, "obra", "obras")} ao banco…</div>`
           : `<div class="faixa faixa-ok">✓ Tudo salvo no banco</div>`}
-      ${estado.espacoApertado ? `<div class="erro">Espaço do celular quase cheio para o app. Em <b>⚙ Ajustes › Espaço no celular</b>, libere as fotos que já estão no banco.</div>` : ""}
+      ${estado.espacoApertado ? `<div class="erro">Espaço do celular quase cheio para o app. Libere espaço no celular apagando outros arquivos ou aplicativos (as fotos do app ficam guardadas).</div>` : ""}
       <button type="button" class="botao botao-grande" data-acao="nova-obra">+ Nova obra</button>
       ${instalarHtml()}
       <section class="bloco">
@@ -932,45 +932,22 @@
   // ---------------------------------------------------------------- espaço no celular
   /* O limite é o do celular: o navegador libera para o app até 60% do espaço do aparelho
      (Android/Chrome). Com a guarda permanente, ele não apaga nada sozinho quando o
-     espaço aperta. Foto que já está no banco pode sair do celular: o app baixa de novo
-     se alguém abrir. */
+     espaço aperta. Foto tirada fica sempre guardada no app: só sai se o supervisor
+     excluir a foto, o ponto ou a obra. */
   const fmtTamanho = (b) => (b >= 1024 ** 3 ? `${(b / 1024 ** 3).toFixed(1).replace(".", ",")} GB`
     : b >= 1024 ** 2 ? `${Math.round(b / 1024 ** 2)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
-  async function fotosLiberaveis() {
-    const obras = new Map((await Banco.listarObras()).map((o) => [o.id, o]));
-    return (await Banco.todasFotos()).filter((f) => {
-      const o = obras.get(f.obraId);
-      // só sai do celular o que já está inteiro no banco: a foto subiu e a obra não tem nada pendente
-      return f.enviada && (!o || (!o.pendente && !o.erro_envio));
-    });
-  }
   async function mostrarEspaco() {
     const el = document.getElementById("espaco");
     if (!el) return;
-    const [esp, perm, livres, todas] = await Promise.all([Banco.espaco(), Banco.persistente(), fotosLiberaveis(), Banco.todasFotos()]);
-    const tamLivre = livres.reduce((t, f) => t + (f.blob?.size || 0), 0);
+    const [esp, perm, todas] = await Promise.all([Banco.espaco(), Banco.persistente(), Banco.todasFotos()]);
     // conta por baixo: no mínimo 250 KB por foto (foto real de campo fica entre 200 e 700 KB)
     const medias = Math.max(250 * 1024, todas.length ? todas.reduce((t, f) => t + (f.blob?.size || 0), 0) / todas.length : 0);
     const resta = esp ? Math.max(0, esp.quota - esp.usage) : 0;
     estado.espacoHtml = `${esp ? `<div class="espaco-barra"><i style="width:${Math.min(100, (esp.usage / esp.quota) * 100).toFixed(1)}%"></i></div>
         <p class="sub"><b>${fmtTamanho(esp.usage)}</b> usados de <b>${fmtTamanho(esp.quota)}</b> que o celular libera para o app · cabem ainda cerca de <b>${Math.floor(resta / medias).toLocaleString("pt-BR")} fotos</b>.</p>` : `<p class="sub">Este celular não informa o espaço.</p>`}
-      <p class="sub">${todas.length.toLocaleString("pt-BR")} fotos guardadas no celular. ${perm ? "✓ Guarda permanente: o celular não apaga nada sozinho." : "⚠ O celular ainda não deu a guarda permanente. Instale o app na tela inicial para garantir."}</p>
-      ${livres.length ? `<button type="button" class="botao botao-claro botao-pequeno" data-acao="liberar-espaco">🧹 Liberar ${fmtTamanho(tamLivre)}</button>
-      <small class="sub">Tira do celular ${livres.length === 1 ? "a foto que já está" : `as ${livres.length} fotos que já estão`} no banco. Elas voltam se alguém abrir com internet.</small>` : ""}`;
+      <p class="sub">${todas.length.toLocaleString("pt-BR")} fotos guardadas no app. ${perm ? "✓ Guarda permanente: o celular não apaga nada sozinho." : "⚠ O celular ainda não deu a guarda permanente. Instale o app na tela inicial para garantir."}</p>`;
     const atual = document.getElementById("espaco");
     if (atual) atual.innerHTML = estado.espacoHtml;
-  }
-  async function liberarEspaco() {
-    const livres = await fotosLiberaveis();
-    if (!livres.length) return;
-    if (!confirm(`Tirar deste celular ${plural(livres.length, "foto", "fotos")} que já ${livres.length === 1 ? "está" : "estão"} no banco? Elas continuam no banco e voltam para o celular quando alguém abrir (precisa de internet).`)) return;
-    for (const f of livres) {
-      await Banco.excluirFoto(f.id);
-      const url = estado.miniaturas.get(f.id);
-      if (url) { URL.revokeObjectURL(url); estado.miniaturas.delete(f.id); }
-    }
-    avisar(`${plural(livres.length, "foto liberada", "fotos liberadas")} do celular.`);
-    mostrarEspaco();
   }
   /** aviso na tela inicial quando o espaço do app passa de 85% */
   async function conferirEspaco() {
@@ -1194,7 +1171,6 @@
         carregarAjustes();
         return mostrarEspaco();
       }
-      case "liberar-espaco": return liberarEspaco();
       case "sair": return sairDaConta();
       case "filtro":
         estado.filtro = alvo.dataset.f;
