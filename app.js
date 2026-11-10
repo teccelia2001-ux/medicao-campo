@@ -605,7 +605,8 @@
         ${fotos ? `<div class="fotos">${fotos}</div>
         <button type="button" class="link link-galeria" data-acao="fotos-galeria">💾 Salvar ${p.fotos.length === 1 ? "a foto" : `as ${p.fotos.length} fotos`} no celular</button>` : ""}
         <div class="dupla" ${soLeitura(o) ? "hidden" : ""}>
-          <label class="botao">📷 Tirar foto<input type="file" accept="image/*" capture="environment" data-acao="foto" data-origem="camera" hidden></label>
+          <button type="button" class="botao" data-acao="camera">📷 Tirar foto</button>
+          <input type="file" accept="image/*" capture="environment" data-acao="foto" data-origem="camera" hidden>
           <label class="botao botao-claro">🖼 Galeria<input type="file" accept="image/*" multiple data-acao="foto" data-origem="galeria" hidden></label>
         </div>
       </section>
@@ -737,12 +738,17 @@
   /** Desenha a foto no tamanho pedido com a faixa da obra, do ponto, da data/hora e da coordenada. */
   async function carimbar(img, max, qualidade, linhas) {
     const esc1 = Math.min(1, max / Math.max(img.width, img.height));
-    const w = Math.round(img.width * esc1), h = Math.round(img.height * esc1);
     const cv = document.createElement("canvas");
-    cv.width = w;
-    cv.height = h;
+    cv.width = Math.round(img.width * esc1);
+    cv.height = Math.round(img.height * esc1);
+    cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+    return carimbarCanvas(cv, qualidade, linhas);
+  }
+
+  /** Faixa com obra, ponto, data/hora e coordenada sobre a foto já desenhada; devolve o JPEG. */
+  async function carimbarCanvas(cv, qualidade, linhas) {
+    const w = cv.width, h = cv.height;
     const ctx = cv.getContext("2d");
-    ctx.drawImage(img, 0, 0, w, h);
     const fs = Math.max(14, Math.round(Math.min(w, h) * 0.032));
     const alt = fs * 1.35 * linhas.length + fs * 0.6;
     ctx.fillStyle = "rgba(0,0,0,0.55)";
@@ -760,14 +766,10 @@
   async function prepararFoto(arquivo, o, p, { copia = false } = {}) {
     const img = await abrirImagem(arquivo);
     const agora = new Date();
-    const linhas = [
-      `OBRA ${o.numero} · ${p.nome}`,
-      `${agora.toLocaleDateString("pt-BR")} ${agora.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}${p.gps ? ` · ${M.fmtUtm(p.gps)}` : ""}`,
-    ];
-    const app = await carimbar(img, FOTO_MAX, 0.78, linhas);
-    const grande = copia ? await carimbar(img, 2560, 0.9, linhas) : null;
+    const app = await carimbar(img, FOTO_MAX, 0.78, linhasCarimbo(o, p, agora));
     if (img.close) img.close();
-    return { ...app, criada_em: agora.toISOString(), copia: grande?.blob || null };
+    // a cópia do celular é a mesma foto do app: nada de processar duas vezes
+    return { ...app, criada_em: agora.toISOString(), copia: copia ? app.blob : null };
   }
 
   // ---------------------------------------------------------------- cópia na galeria do celular
@@ -797,6 +799,131 @@
     return true;
   }
 
+  // ---------------------------------------------------------------- câmera dentro do app
+  /* Abre a câmera uma vez e cada toque no disparador congela o quadro na hora; o carimbo,
+     a compressão e a gravação acontecem por trás, em fila, sem travar o próximo disparo.
+     Sem câmera disponível (permissão negada, aparelho antigo), cai na câmera do celular. */
+  const linhasCarimbo = (o, p, quando) => [
+    `OBRA ${o.numero} · ${p.nome}`,
+    `${quando.toLocaleDateString("pt-BR")} ${quando.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}${p.gps ? ` · ${M.fmtUtm(p.gps)}` : ""}`,
+  ];
+
+  function cameraDoCelular() {
+    document.querySelector('input[data-origem="camera"]')?.click();
+  }
+
+  async function abrirCamera() {
+    const o = estado.obra, p = ponto();
+    if (!p || !navigator.mediaDevices?.getUserMedia) return cameraDoCelular();
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1920 } },
+      });
+    } catch (e) {
+      avisar("Abrindo a câmera do celular…", "guardado");
+      return cameraDoCelular();
+    }
+    const el = document.createElement("div");
+    el.className = "camera";
+    el.innerHTML = `<video playsinline autoplay muted></video><div class="camera-clarao"></div>
+      <div class="camera-topo"><b>${esc(p.nome)}</b><span class="camera-cont">0 fotos</span>
+        <button type="button" class="camera-lanterna" data-cam="lanterna" hidden aria-label="Lanterna">🔦</button></div>
+      <div class="camera-base">
+        <div class="camera-mini"></div>
+        <button type="button" class="camera-disparo" data-cam="foto" aria-label="Tirar foto"></button>
+        <button type="button" class="camera-ok" data-cam="ok">Concluir</button>
+      </div>`;
+    document.body.appendChild(el);
+    document.body.classList.add("com-camera");
+    const video = el.querySelector("video");
+    video.srcObject = stream;
+    video.play().catch(() => {});
+    const trilha = stream.getVideoTracks()[0];
+    let lanterna = false;
+    try { if (trilha.getCapabilities?.().torch) el.querySelector(".camera-lanterna").hidden = false; } catch (e) { /* sem lanterna */ }
+    // o botão voltar do celular fecha a câmera em vez de sair do app
+    history.pushState({ camera: true }, "");
+    const voltar = () => concluir(false);
+    window.addEventListener("popstate", voltar);
+
+    let fila = Promise.resolve();
+    const tiradas = [];
+    let tiradasN = 0;
+    let fechando = false;
+
+    function disparar() {
+      const w0 = video.videoWidth, h0 = video.videoHeight;
+      if (!w0 || fechando) return;
+      // congela o quadro agora (rápido); o resto vai para a fila
+      const esc1 = Math.min(1, FOTO_MAX / Math.max(w0, h0));
+      const cv = document.createElement("canvas");
+      cv.width = Math.round(w0 * esc1);
+      cv.height = Math.round(h0 * esc1);
+      cv.getContext("2d").drawImage(video, 0, 0, cv.width, cv.height);
+      const quando = new Date();
+      tiradasN++;
+      el.querySelector(".camera-cont").textContent = plural(tiradasN, "foto", "fotos");
+      const clarao = el.querySelector(".camera-clarao");
+      clarao.classList.remove("piscar");
+      void clarao.offsetWidth;
+      clarao.classList.add("piscar");
+      try { navigator.vibrate?.(25); } catch (e) { /* sem vibração */ }
+      fila = fila.then(async () => {
+        try {
+          const pronta = await carimbarCanvas(cv, 0.8, linhasCarimbo(o, p, quando));
+          const foto = { id: novoId(), obraId: o.id, pontoId: p.id, gps: p.gps || null, ...pronta, criada_em: quando.toISOString(), origem: "camera", na_galeria: false };
+          await Banco.salvarFoto(foto);
+          p.fotos.push(foto.id);
+          const url = URL.createObjectURL(foto.blob);
+          estado.miniaturas.set(foto.id, url);
+          tiradas.push({ foto, nome: nomeFoto(o, p, foto.criada_em, tiradas.length) });
+          const mini = el.querySelector(".camera-mini");
+          mini.innerHTML = `<img src="${url}" alt="Última foto"><small>${tiradas.length}</small>`;
+          salvarDepois(); // a obra sobe para o banco logo depois
+        } catch (e) {
+          console.error(e);
+          avisar("Uma foto não pôde ser guardada.", "erro");
+        }
+      });
+    }
+
+    async function concluir(viaBotao = true) {
+      if (fechando) return;
+      fechando = true;
+      window.removeEventListener("popstate", voltar);
+      if (viaBotao) history.back();
+      el.querySelector(".camera-ok").textContent = "Guardando…";
+      await fila;
+      stream.getTracks().forEach((t) => t.stop());
+      el.remove();
+      document.body.classList.remove("com-camera");
+      await salvarAgora();
+      render();
+      if (!tiradas.length) return;
+      // cópias no celular só agora, para os avisos de download não atrapalharem os disparos
+      if (copiaLigada() && !ehIos()) {
+        tiradas.forEach((t, k) => setTimeout(() => baixar(t.foto.blob, t.nome), k * 250));
+        for (const t of tiradas) { t.foto.na_galeria = true; await Banco.salvarFoto(t.foto); }
+      }
+      avisar(`${plural(tiradas.length, "foto guardada", "fotos guardadas")}.`);
+    }
+
+    el.addEventListener("click", async (e) => {
+      const b = e.target.closest("[data-cam]");
+      if (!b) return;
+      if (b.dataset.cam === "foto") return disparar();
+      if (b.dataset.cam === "ok") return concluir(true);
+      if (b.dataset.cam === "lanterna") {
+        lanterna = !lanterna;
+        try { await trilha.applyConstraints({ advanced: [{ torch: lanterna }] }); b.classList.toggle("ligada", lanterna); } catch (err) { /* sem lanterna */ }
+      }
+    });
+    // tocar na imagem também tira a foto
+    video.addEventListener("click", disparar);
+  }
+
   async function receberFotos(arquivos, origem = "galeria") {
     const o = estado.obra, p = ponto();
     if (!arquivos.length || !p) return;
@@ -808,13 +935,10 @@
     for (const a of arquivos) {
       try {
         const { copia, ...pronta } = await prepararFoto(a, o, p, { copia: copiar });
-        const foto = { id: novoId(), obraId: o.id, pontoId: p.id, gps: p.gps || null, ...pronta, origem, na_galeria: origem === "galeria" };
+        // a cópia sai na hora, antes de guardar, para o celular já ir salvando
+        if (copia) baixar(copia, nomeFoto(o, p, pronta.criada_em, ok));
+        const foto = { id: novoId(), obraId: o.id, pontoId: p.id, gps: p.gps || null, ...pronta, origem, na_galeria: origem === "galeria" || !!copia };
         await Banco.salvarFoto(foto);
-        if (copia) {
-          baixar(copia, nomeFoto(o, p, foto.criada_em, ok));
-          foto.na_galeria = true;
-          await Banco.salvarFoto(foto);
-        }
         p.fotos.push(foto.id);
         estado.miniaturas.set(foto.id, URL.createObjectURL(foto.blob));
         ok++;
@@ -825,7 +949,7 @@
     await salvarAgora();
     render();
     const msg = ok === arquivos.length ? (ok > 1 ? `${ok} fotos guardadas` : "Foto guardada") : `Guardadas ${ok} de ${arquivos.length} fotos`;
-    avisar(copiar && ok ? `${msg} e cópia salva no celular (pasta Download).` : `${msg}.`, ok ? "ok" : "erro");
+    avisar(`${msg}.`, ok ? "ok" : "erro");
   }
 
   function marcarGps() {
@@ -1136,6 +1260,7 @@
         salvarAgora();
         return render();
       }
+      case "camera": return abrirCamera();
       case "ver-foto":
         estado.foto = { id: alvo.dataset.id };
         return render();
