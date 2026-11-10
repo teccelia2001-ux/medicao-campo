@@ -59,6 +59,11 @@
     obterFoto: (id) => operar("fotos", "readonly", (s) => s.get(id)),
     excluirFoto: (id) => operar("fotos", "readwrite", (s) => s.delete(id)),
     fotosDaObra: (obraId) => operar("fotos", "readonly", (s) => s.index("obra").getAll(obraId)),
+    todasFotos: () => operar("fotos", "readonly", (s) => s.getAll()),
+    /** o navegador não apaga nada sozinho quando o celular fica sem espaço */
+    async persistente() {
+      try { return !!(navigator.storage && (await navigator.storage.persisted())); } catch (e) { return false; }
+    },
     async ler(k, padrao = null) {
       const r = await operar("chaves", "readonly", (s) => s.get(k));
       return r ? r.v : padrao;

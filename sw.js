@@ -1,6 +1,6 @@
 /* Guarda o app e as bibliotecas no celular para abrir sem internet.
    Ao mudar qualquer arquivo, suba a VERSAO para os celulares pegarem a nova. */
-const VERSAO = "medicao-v21";
+const VERSAO = "medicao-v22";
 const ARQUIVOS = [
   "./",
   "index.html",

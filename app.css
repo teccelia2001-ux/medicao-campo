@@ -617,3 +617,8 @@ body.com-camera { overflow: hidden; }
 }
 .camera-disparo:active { transform: scale(0.92); }
 .camera-ok { justify-self: end; min-height: 46px; padding: 8px 18px; border: 0; border-radius: 12px; background: #fff; color: var(--texto); font-weight: 800; font-size: 15px; }
+
+/* espaço no celular */
+.espaco-barra { height: 10px; border-radius: 5px; background: #e2e8f0; overflow: hidden; }
+.espaco-barra i { display: block; height: 100%; background: #16a34a; border-radius: 5px; }
+#espaco { display: flex; flex-direction: column; gap: 8px; }
