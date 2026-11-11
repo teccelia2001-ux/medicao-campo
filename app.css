@@ -510,6 +510,12 @@ button, label.botao, .rapido, .miniatura, a { touch-action: manipulation; }
   .rapidos { grid-template-columns: repeat(2, 1fr); }
 }
 .sub-inline { font-size: 13px; font-weight: 500; color: var(--suave); }
+/* ordem dos pontos: crescente ou decrescente */
+.titulo-pontos { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.ordem { display: inline-flex; border: 1px solid var(--borda); border-radius: 10px; overflow: hidden; background: #fff; }
+.ordem button { min-height: 36px; padding: 4px 12px; border: 0; background: transparent; color: #334155; font-weight: 700; font-size: 13px; }
+.ordem button + button { border-left: 1px solid var(--borda); }
+.ordem button.ativo { background: var(--vermelho); color: #fff; }
 
 /* botão já lançado: quadro cinza; números de instalado (verde) e retirado (vermelho) */
 .rapido-usado { border-color: #9ca3af; background: #e5e7eb; color: var(--texto); }

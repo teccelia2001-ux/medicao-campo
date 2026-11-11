@@ -51,7 +51,10 @@
     enviando: false,
     online: navigator.onLine,
     supervisores: null, // ajustes do administrador
+    ordemPontos: (() => { try { return localStorage.getItem("medicao_ordem_pontos") === "decr" ? "decr" : "cresc"; } catch (e) { return "cresc"; } })(),
   };
+  /** P1, P2 ... P10 na ordem certa (número por número, não letra por letra) */
+  const cmpPonto = (a, b) => String(a.nome || "").localeCompare(String(b.nome || ""), "pt-BR", { numeric: true, sensitivity: "base" });
   const ponto = () => estado.obra?.pontos.find((p) => p.id === estado.pontoId);
   /** obra de outro supervisor: abre só para consulta e para gerar a medição */
   const soLeitura = (o) => o && o.dono === false;
@@ -454,7 +457,8 @@
         return termos.every((x) => texto.includes(x));
       })
       : o.pontos;
-    const pontos = achados.map((p) => {
+    const ordenados = [...achados].sort((a, b) => (estado.ordemPontos === "decr" ? -cmpPonto(a, b) : cmpPonto(a, b)));
+    const pontos = ordenados.map((p) => {
       const tp = M.totaisPonto(p);
       return `<button type="button" class="cartao ponto-item" data-acao="abrir-ponto" data-id="${p.id}">
         <div class="linha-topo"><b class="ponto-nome">${esc(p.nome)}</b><b class="valor">${M.fmtMoeda(tp.valor)}</b></div>
@@ -476,7 +480,13 @@
       ${o.local || o.municipio || o.equipe ? `<p class="sub">${esc([o.local, o.municipio, o.equipe].filter(Boolean).join(" · "))}</p>` : ""}
       ${soLeitura(o) ? "" : `<button type="button" class="botao botao-grande" data-acao="novo-ponto">+ Novo ponto <small>${esc(proximoNome(o))}</small></button>`}
       <section class="bloco">
-        <h2>Pontos da obra ${termos.length ? `<small class="sub-inline">(${achados.length} de ${o.pontos.length})</small>` : ""}</h2>
+        <div class="titulo-pontos">
+          <h2>Pontos da obra ${termos.length ? `<small class="sub-inline">(${achados.length} de ${o.pontos.length})</small>` : ""}</h2>
+          ${o.pontos.length > 1 ? `<div class="ordem" role="group" aria-label="Ordem dos pontos">
+            <button type="button" data-acao="ordem-pontos" data-ordem="cresc" class="${estado.ordemPontos === "cresc" ? "ativo" : ""}" aria-pressed="${estado.ordemPontos === "cresc"}">↑ P1…P9</button>
+            <button type="button" data-acao="ordem-pontos" data-ordem="decr" class="${estado.ordemPontos === "decr" ? "ativo" : ""}" aria-pressed="${estado.ordemPontos === "decr"}">↓ P9…P1</button>
+          </div>` : ""}
+        </div>
         ${o.pontos.length ? `<label class="campo campo-pesquisa"><input id="filtro-ponto" type="search" value="${esc(estado.filtroPonto || "")}" placeholder="Pesquisar ponto: P3, observação ou serviço (ex.: poste, 62297)" autocomplete="off"></label>` : ""}
         ${pontos ? `<div class="grade-pontos">${pontos}</div>`
           : o.pontos.length ? `<p class="vazio">Nenhum ponto encontrado.</p>`
@@ -1448,6 +1458,10 @@
         return render();
       case "fechar-foto":
         estado.foto = null;
+        return render();
+      case "ordem-pontos":
+        estado.ordemPontos = alvo.dataset.ordem === "decr" ? "decr" : "cresc";
+        try { localStorage.setItem("medicao_ordem_pontos", estado.ordemPontos); } catch (e) { /* sem memória */ }
         return render();
       case "foto-ant": return andarFoto(-1);
       case "foto-prox": return andarFoto(1);
