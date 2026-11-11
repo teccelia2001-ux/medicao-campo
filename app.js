@@ -241,7 +241,36 @@
       if (p) carregarMiniaturas(p.fotos);
       // na mesma hora do toque: assim o celular abre o teclado
       if (estado.escolhido) document.getElementById("qtd-folha")?.focus();
+      if (estado.foto) ligarVisor();
     }
+  }
+
+  /** visor: abre na foto escolhida e acompanha o dedo (a faixa de fotos rola de lado) */
+  function ligarVisor() {
+    const faixa = document.getElementById("visor-fotos");
+    if (!faixa) return;
+    const ids = ponto()?.fotos?.length ? ponto().fotos : [estado.foto.id];
+    const posicionar = () => { faixa.scrollLeft = Math.max(0, ids.indexOf(estado.foto?.id)) * faixa.clientWidth; };
+    posicionar();
+    let quadro = 0;
+    faixa.addEventListener("scroll", () => {
+      cancelAnimationFrame(quadro);
+      quadro = requestAnimationFrame(() => {
+        const i = Math.min(ids.length - 1, Math.max(0, Math.round(faixa.scrollLeft / faixa.clientWidth)));
+        if (!estado.foto || ids[i] === estado.foto.id) return;
+        estado.foto = { id: ids[i] };
+        const cont = document.getElementById("visor-cont");
+        if (cont) cont.textContent = `${i + 1} de ${ids.length}`;
+      });
+    }, { passive: true });
+    faixa.dataset.posicionar = "1";
+    faixa.posicionar = posicionar;
+  }
+  // girou o celular: continua na mesma foto
+  window.addEventListener("resize", () => document.getElementById("visor-fotos")?.posicionar?.());
+  function andarFoto(passo) {
+    const faixa = document.getElementById("visor-fotos");
+    if (faixa) faixa.scrollBy({ left: passo * faixa.clientWidth, behavior: "smooth" });
   }
 
   function topo(titulo, voltar, direita = "") {
@@ -668,9 +697,18 @@
   function fotoHtml() {
     const f = estado.foto;
     if (!f) return "";
-    const url = estado.miniaturas.get(f.id);
+    // todas as fotos do ponto lado a lado: deslizar o dedo troca de foto
+    const ids = ponto()?.fotos?.length ? ponto().fotos : [f.id];
+    const idx = Math.max(0, ids.indexOf(f.id));
+    const varias = ids.length > 1;
     return `<div class="visor">
-      <img src="${url || ""}" alt="Foto do ponto">
+      ${varias ? `<div class="visor-topo"><b id="visor-cont">${idx + 1} de ${ids.length}</b><small>deslize para o lado para ver as outras</small></div>` : ""}
+      <div class="visor-area">
+        <div class="visor-fotos" id="visor-fotos">${ids.map((id, k) => `<div class="visor-quadro">
+          <img src="${estado.miniaturas.get(id) || ""}" alt="Foto ${k + 1} do ponto" draggable="false"></div>`).join("")}</div>
+        ${varias ? `<button type="button" class="visor-seta visor-seta-ant" data-acao="foto-ant" aria-label="Foto anterior">‹</button>
+          <button type="button" class="visor-seta visor-seta-prox" data-acao="foto-prox" aria-label="Próxima foto">›</button>` : ""}
+      </div>
       <div class="visor-acoes">
         <button type="button" class="botao" data-acao="foto-galeria">💾 Salvar na galeria</button>
         ${soLeitura(estado.obra) ? "<span></span>" : `<button type="button" class="botao botao-perigo" data-acao="excluir-foto">Excluir foto</button>`}
@@ -1411,6 +1449,8 @@
       case "fechar-foto":
         estado.foto = null;
         return render();
+      case "foto-ant": return andarFoto(-1);
+      case "foto-prox": return andarFoto(1);
       case "foto-galeria": {
         const f = await fotoLocal(o, estado.foto.id);
         if (!f) return avisar("A foto ainda não está neste celular.", "erro");

@@ -334,7 +334,25 @@ button:disabled { cursor: default; }
   padding: 12px 12px calc(12px + env(safe-area-inset-bottom));
   background: #000;
 }
-.visor img { flex: 1; min-height: 0; width: 100%; object-fit: contain; }
+.visor-topo { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; color: #fff; padding: 0 4px; }
+.visor-topo small { opacity: 0.7; }
+.visor-area { position: relative; flex: 1; min-height: 0; display: flex; }
+/* fotos lado a lado; o dedo rola de lado e para em cada foto */
+.visor-fotos {
+  flex: 1; min-width: 0; display: flex; overflow-x: auto; overflow-y: hidden;
+  scroll-snap-type: x mandatory; overscroll-behavior-x: contain; scrollbar-width: none; touch-action: pan-x pinch-zoom;
+}
+.visor-fotos::-webkit-scrollbar { display: none; }
+.visor-quadro { flex: 0 0 100%; min-width: 0; scroll-snap-align: center; scroll-snap-stop: always; display: flex; align-items: center; justify-content: center; }
+.visor-quadro img { width: 100%; height: 100%; object-fit: contain; user-select: none; -webkit-user-drag: none; }
+.visor-seta {
+  position: absolute; top: 50%; transform: translateY(-50%); width: 44px; height: 64px; border: 0; border-radius: 10px;
+  background: rgba(255, 255, 255, 0.18); color: #fff; font-size: 34px; line-height: 1; display: none;
+}
+.visor-seta-ant { left: 4px; }
+.visor-seta-prox { right: 4px; }
+/* setas só com mouse (computador); no celular é o dedo */
+@media (hover: hover) and (pointer: fine) { .visor-seta { display: block; } }
 .visor-acoes { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
 /* medição */
