@@ -120,6 +120,14 @@ tbody tr.aberta { background: #ffecec; }
 .foto { aspect-ratio: 3 / 4; border: 1px solid var(--borda); border-radius: 10px; overflow: hidden; background: #e2e8f0; padding: 0; display: flex; align-items: center; justify-content: center; color: var(--suave); }
 .foto img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .sem { padding: 10px 14px 14px; color: var(--suave); font-style: italic; }
+/* tabela do ponto no padrão da medição geral (fechamento simplificado) */
+.med-rola { overflow-x: auto; padding: 10px 14px 4px; }
+.ponto table.med { font-size: 12px; border: 1px solid #000; }
+.ponto .med td, .ponto .med th { padding: 4px 8px; border: 1px solid #000; text-align: center; }
+.ponto .med td:nth-child(3) { text-align: left; }
+.med-secao th, .med-cab th, .med-total td { background: #c00000; color: #fff; font-weight: 700; }
+.med-cat td { background: #e6e6e6; font-weight: 700; }
+.ponto .med-cat td, .ponto .med-total td:first-child { text-align: center; }
 
 .visor { position: fixed; inset: 0; z-index: 40; background: rgba(0, 0, 0, 0.9); display: flex; align-items: center; justify-content: center; padding: 20px; }
 .visor img { max-width: 100%; max-height: 100%; object-fit: contain; }

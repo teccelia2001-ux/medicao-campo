@@ -604,6 +604,15 @@ body.com-camera { overflow: hidden; }
 .camera-cont { flex: 1; font-weight: 600; opacity: 0.9; }
 .camera-lanterna { width: 44px; height: 44px; border: 0; border-radius: 50%; background: rgba(255, 255, 255, 0.2); font-size: 20px; }
 .camera-lanterna.ligada { background: #fde047; }
+.camera-lentes {
+  display: flex; justify-content: center; gap: 8px; padding: 10px 12px 2px; background: #000;
+}
+.camera-lentes[hidden] { display: none; }
+.camera-lentes button {
+  min-width: 48px; height: 40px; padding: 0 12px; border: 0; border-radius: 20px;
+  background: rgba(255, 255, 255, 0.16); color: #fff; font-weight: 800; font-size: 14px; touch-action: manipulation;
+}
+.camera-lentes button.ativa { background: #fde047; color: #111; }
 .camera-base {
   display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
   padding: 16px 20px calc(20px + env(safe-area-inset-bottom)); background: #000;

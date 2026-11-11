@@ -444,7 +444,8 @@
     const colunas = { 0: { cellWidth: 12 }, 1: { cellWidth: 18 }, 2: { cellWidth: 80 }, 3: { cellWidth: 24 }, 4: { cellWidth: 20 }, 5: { cellWidth: 36 } };
     const cabVermelho = { fillColor: RGB.vermelho, textColor: [255, 255, 255], fontStyle: "bold" };
 
-    for (const s of secoes) {
+    const desenharSecoes = (lista) => {
+    for (const s of lista) {
       const corpo = [];
       let n = 0;
       for (const [cat, itens] of s.cats) {
@@ -476,6 +477,8 @@
       });
       y = doc.lastAutoTable.finalY + 2.1;
     }
+    };
+    desenharSecoes(secoes);
 
     if (secoes.length === 0) {
       doc.setFont("helvetica", "italic");
@@ -492,6 +495,14 @@
         return true;
       }
       return false;
+    };
+    const tituloFolha = (texto) => {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8);
+      doc.setTextColor(...RGB.vermelho);
+      doc.text(texto, M, y + 3);
+      doc.setTextColor(0, 0, 0);
+      y += 6;
     };
     doc.setFillColor(...RGB.vermelho);
     doc.rect(M, y, L, 8, "F");
@@ -519,9 +530,14 @@
       y += t.length * 3.5 + 1;
     }
 
-    for (const p of pontos) {
+    for (const [ip, p] of pontos.entries()) {
       const tp = totaisPonto(p);
-      novaPagina(24);
+      if (comFotos && ip > 0) {
+        // com fotos: cada ponto (poste) na sua folha, com as fotos dele
+        doc.addPage();
+        y = TOPO;
+        tituloFolha(`OBRA Nº ${obra.numero} · MEDIÇÃO POR PONTO`);
+      } else novaPagina(24);
       doc.setFillColor(...RGB.faixa);
       doc.rect(M, y, L, 7, "F");
       doc.setTextColor(255, 255, 255);
@@ -545,19 +561,19 @@
         y += t.length * 3.5;
       }
       if (p.itens.length) {
-        const linhas = [...p.itens]
-          .sort((a, b) => OPERACOES.indexOf(a.operacao) - OPERACOES.indexOf(b.operacao) || cmp(String(a.codigo), String(b.codigo)))
-          .map((i) => [i.codigo, i.descricao, (i.operacao || "").slice(0, 3), fmtQtd(numero(i.quantidade)),
-            fmtNum(numero(i.quantidade) * i.us), moedaPdf(valorItem(i))]);
+        y += 1;
+        desenharSecoes(estrutura([p]));
         doc.autoTable({
-          startY: y + 0.5,
+          startY: y - 1.6,
           margin: { left: M, right: M, top: TOPO, bottom: PE },
           theme: "grid",
-          styles: { ...estiloBase, fontSize: 7 },
-          headStyles: cabVermelho,
-          columnStyles: { 0: { cellWidth: 18 }, 1: { cellWidth: 92, halign: "left" }, 2: { cellWidth: 14 }, 3: { cellWidth: 20 }, 4: { cellWidth: 20 }, 5: { cellWidth: 26 } },
-          head: [["COD", "DESCRIÇÃO DO SERVIÇO", "TIPO", "QTD", "TOTAL US", "VALOR"]],
-          body: linhas,
+          styles: estiloBase,
+          columnStyles: colunas,
+          body: [[
+            { content: "", styles: cabVermelho }, { content: "", styles: cabVermelho },
+            { content: `TOTAL ${p.nome}`, colSpan: 2, styles: cabVermelho },
+            { content: fmtNum(tp.us), styles: cabVermelho }, { content: moedaPdf(tp.valor), styles: cabVermelho },
+          ]],
           rowPageBreak: "avoid",
         });
         y = doc.lastAutoTable.finalY + 2;
@@ -569,18 +585,27 @@
       }
 
       if (comFotos && p.fotos.length) {
-        const largFoto = (L - 4) / 2;
-        const altFoto = 66;
-        for (let k = 0; k < p.fotos.length; k += 2) {
-          novaPagina(altFoto + 6);
-          for (let j = 0; j < 2 && k + j < p.fotos.length; j++) {
+        // grade que cabe na folha do ponto: 1 foto grande, 2 colunas, e mais colunas se forem muitas
+        const nf = p.fotos.length, GAP = 4, LEGENDA = 5;
+        const livre = alturaPag - PE - y - 1;
+        let cols = nf === 1 ? 1 : 2, largFoto = 0, altFoto = 0;
+        for (; ; cols++) {
+          const linhas = Math.ceil(nf / cols);
+          largFoto = (L - (cols - 1) * GAP) / cols;
+          altFoto = Math.min(largFoto * 4 / 3, 120, (livre - linhas * LEGENDA) / linhas);
+          if (altFoto >= 40 || cols >= 4) break;
+        }
+        if (altFoto < 40) altFoto = Math.min(largFoto * 4 / 3, 60); // muitas fotos: continua em outra folha do mesmo ponto
+        for (let k = 0; k < nf; k += cols) {
+          if (novaPagina(altFoto + LEGENDA + 1)) tituloFolha(`${p.nome} (continuação) · OBRA Nº ${obra.numero}`);
+          for (let j = 0; j < cols && k + j < nf; j++) {
             const foto = await Banco.obterFoto(p.fotos[k + j]);
             if (!foto) continue;
             const url = await blobParaDataUrl(foto.blob);
             const { w, h } = await tamanhoImagem(url);
             const esc = Math.min(largFoto / w, altFoto / h);
             const fw = w * esc, fh = h * esc;
-            const x0 = M + j * (largFoto + 4);
+            const x0 = M + j * (largFoto + GAP);
             doc.setDrawColor(200, 200, 200);
             doc.rect(x0, y, largFoto, altFoto);
             doc.addImage(url, "JPEG", x0 + (largFoto - fw) / 2, y + (altFoto - fh) / 2, fw, fh, foto.id);
@@ -590,7 +615,7 @@
             doc.setTextColor(0, 0, 0);
             doc.setFontSize(8);
           }
-          y += altFoto + 5;
+          y += altFoto + LEGENDA;
         }
       }
       y += 3;

@@ -280,7 +280,16 @@
     const dias = o.pontos.filter((p) => p.itens.length && p.dia).map((p) => p.dia).sort();
     const pontos = o.pontos.map((p) => {
       const tp = M.totaisPonto(p);
-      const itens = [...p.itens].sort((a, b) => OPS.indexOf(a.operacao) - OPS.indexOf(b.operacao));
+      // mesmo padrão da medição geral: seção por operação e departamento, categorias e total
+      const tabela = M.estrutura([p]).map((s) => {
+        let n = 0;
+        return `<tr class="med-secao"><th colspan="6">${esc(s.titulo)}</th></tr>
+          <tr class="med-cab"><th>ITEM</th><th>COD</th><th>DESCRIÇÃO DO SERVIÇO</th><th class="num">QUANTIDADE</th><th class="num">TOTAL US</th><th class="num">VALOR TOTAL</th></tr>
+          ${s.cats.map(([cat, itens]) => `<tr class="med-cat"><td colspan="6">${esc(cat)}</td></tr>
+            ${itens.map((i) => `<tr><td>${++n}</td><td>${esc(i.cod)}</td><td>${esc(i.desc)}</td>
+              <td class="num">${M.fmtQtd(i.qtd)}</td><td class="num">${M.fmtNum(i.us)}</td><td class="num">${M.fmtMoeda(i.valor)}</td></tr>`).join("")}`).join("")}
+          <tr class="med-total"><td colspan="4">TOTAL ${esc(s.op)}</td><td class="num">${M.fmtNum(s.subtotalUs)}</td><td class="num">${M.fmtMoeda(s.subtotal)}</td></tr>`;
+      }).join("");
       return `<article class="ponto">
         <div class="ponto-topo"><b>${esc(p.nome)}</b>
           ${p.gps ? `<span>${esc(M.fmtUtm(p.gps))}</span>` : ""}
@@ -288,12 +297,9 @@
           <span>${p.itens.length} ${p.itens.length === 1 ? "serviço" : "serviços"} · ${M.fmtNum(tp.us)} US · <b>${M.fmtMoeda(tp.valor)}</b></span>
         </div>
         ${p.obs ? `<p class="ponto-obs">Obs.: ${esc(p.obs)}</p>` : ""}
-        ${itens.length ? `<table><thead><tr><th>Cód.</th><th>Serviço</th><th>Tipo</th><th class="num">Qtd</th><th class="num">US</th><th class="num">Valor</th></tr></thead><tbody>
-          ${itens.map((i) => `<tr><td>${esc(i.codigo)}</td><td>${esc(i.descricao)}</td>
-            <td><span class="tipo tipo-${(i.operacao || "").toLowerCase()}">${esc((i.operacao || "").slice(0, 3))}</span></td>
-            <td class="num">${M.fmtQtd(M.numero(i.quantidade))}</td><td class="num">${M.fmtNum(M.numero(i.quantidade) * i.us)}</td>
-            <td class="num valor">${M.fmtMoeda(M.valorItem(i))}</td></tr>`).join("")}
-        </tbody></table>` : `<p class="sem">Sem serviços lançados.</p>`}
+        ${p.itens.length ? `<div class="med-rola"><table class="med"><tbody>${tabela}
+          <tr class="med-total"><td colspan="4">TOTAL ${esc(p.nome)}</td><td class="num">${M.fmtNum(tp.us)}</td><td class="num">${M.fmtMoeda(tp.valor)}</td></tr>
+        </tbody></table></div>` : `<p class="sem">Sem serviços lançados.</p>`}
         ${p.fotos.length ? `<div class="fotos">${p.fotos.map((fid) => `<button type="button" class="foto" data-foto="${fid}" data-ver="${fid}">${estado.fotos.has(fid) ? `<img src="${estado.fotos.get(fid)}" alt="Foto ${esc(p.nome)}">` : "carregando…"}</button>`).join("")}</div>`
           : `<p class="sem">Sem fotos.</p>`}
       </article>`;
