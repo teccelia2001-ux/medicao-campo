@@ -926,42 +926,98 @@
     };
     conferirLanterna();
 
-    /* Lentes (0.5x, 1x, 2x). Três jeitos, do melhor para o pior:
+    /* Lentes (0.5x, 1x, 2x), sempre na câmera de trás e sem sair do app:
        1) o celular dá zoom abaixo de 1 na própria câmera (Android novo, iPhone);
-       2) a lente ultra-angular aparece como outra câmera traseira (iPhone e alguns Android);
-       3) nenhum dos dois: o 0.5x abre a câmera do próprio celular, que tem a lente. */
+       2) a ultra-angular aparece como outra câmera de trás. No Android ela vem só como
+          "camera2 2, facing back": o app testa as câmeras de trás uma vez, escolhe a de
+          foco fixo (a ultra-angular quase sempre é) e guarda a escolha;
+       3) o celular não libera a lente para o navegador: o 0.5x não aparece. */
     let lentes = [];
     let lenteAtual = null;
+    let principal = "";
     const fmtZoom = (v) => `${Math.round(v * 10) / 10}x`;
-    const ehTraseira = (d) => /back|rear|traseira|environment|facing back/i.test(d.label);
-    async function trocarDispositivo(deviceId) {
-      if (trilha.getSettings?.().deviceId === deviceId) return;
-      const antigo = trilha.getSettings?.().deviceId;
-      stream.getTracks().forEach((t) => t.stop()); // alguns celulares não abrem duas câmeras ao mesmo tempo
-      const pedir = (id) => navigator.mediaDevices.getUserMedia({
-        audio: false, video: { deviceId: { exact: id }, width: { ideal: 1920 }, height: { ideal: 1920 } },
-      });
-      let novo;
-      try { novo = await pedir(deviceId); } catch (e) { novo = await pedir(antigo); avisar("Essa lente não abriu.", "erro"); }
+    const ehFrontal = (d) => /front|frontal|user|selfie|facing front/i.test(d.label || "");
+    const pedirCamera = (id, alta = true) => navigator.mediaDevices.getUserMedia({
+      audio: false, video: { deviceId: { exact: id }, ...(alta ? { width: { ideal: 1920 }, height: { ideal: 1920 } } : { width: { ideal: 640 } }) },
+    });
+    function mostrarStream(novo) {
       stream = novo;
       trilha = novo.getVideoTracks()[0];
       video.srcObject = novo;
       video.play().catch(() => {});
       conferirLanterna();
     }
+    async function trocarDispositivo(deviceId) {
+      if (trilha.getSettings?.().deviceId === deviceId && trilha.readyState === "live") return;
+      stream.getTracks().forEach((t) => t.stop()); // alguns celulares não abrem duas câmeras ao mesmo tempo
+      let novo;
+      try { novo = await pedirCamera(deviceId); } catch (e) { novo = null; }
+      // nunca fica na câmera da frente: volta para a principal de trás
+      if (novo && novo.getVideoTracks()[0].getSettings?.().facingMode === "user") {
+        novo.getTracks().forEach((t) => t.stop());
+        novo = null;
+      }
+      if (!novo) {
+        mostrarStream(await pedirCamera(principal));
+        throw new Error("lente");
+      }
+      mostrarStream(novo);
+    }
+    /** testa as outras câmeras de trás e devolve a que parece ser a ultra-angular */
+    async function acharUltra(candidatas) {
+      stream.getTracks().forEach((t) => t.stop());
+      let melhor = null, melhorNota = -Infinity;
+      for (const [k, d] of candidatas.entries()) {
+        let s;
+        try { s = await pedirCamera(d.deviceId, false); } catch (e) { continue; }
+        const tr = s.getVideoTracks()[0];
+        let caps = {}, conf = {};
+        try { caps = tr.getCapabilities?.() || {}; conf = tr.getSettings?.() || {}; } catch (e) { /* sem suporte */ }
+        s.getTracks().forEach((t) => t.stop());
+        if (conf.facingMode === "user") continue; // câmera da frente
+        const rotulo = d.label || "";
+        let nota = -k * 0.1; // empate: a de número menor (no Android a ultra costuma vir logo depois da principal)
+        if (/ultra|wide|0[.,]5/i.test(rotulo)) nota += 10;
+        if (/tele|zoom|macro|depth|profund/i.test(rotulo)) nota -= 10;
+        const focos = caps.focusMode || [];
+        if (focos.length && !focos.includes("continuous")) nota += 3; // foco fixo: ultra-angular
+        if (caps.zoom && caps.zoom.min < 0.95) nota += 5;
+        if (nota > melhorNota) { melhorNota = nota; melhor = d.deviceId; }
+      }
+      mostrarStream(await pedirCamera(principal));
+      return melhorNota > -5 ? melhor : null;
+    }
+    function pintarLentes() {
+      const caixa = el.querySelector(".camera-lentes");
+      caixa.innerHTML = lentes.map((l) => `<button type="button" data-lente="${esc(l.chave)}" class="${l.chave === lenteAtual ? "ativa" : ""}">${esc(l.rotulo)}</button>`).join("");
+      caixa.hidden = lentes.length < 2;
+    }
+    let trocando = false;
     async function usarLente(chave, guardar = true) {
       const l = lentes.find((x) => x.chave === chave);
-      if (!l || fechando) return;
-      if (l.tipo === "nativa") {
-        // abre já (o celular só deixa abrir a câmera dele logo depois do toque)
-        cameraDoCelular();
-        avisar("Na câmera do celular, toque em 0.5x.", "guardado");
-        return concluir(true);
-      }
+      if (!l || fechando || trocando) return;
+      trocando = true;
       try {
-        if (l.tipo === "camera") await trocarDispositivo(l.deviceId);
+        if (l.tipo === "ultra") {
+          let id = null;
+          try { id = localStorage.getItem("medicao_ultra"); } catch (e) { /* sem memória */ }
+          if (!l.candidatas.some((d) => d.deviceId === id)) {
+            avisar("Procurando a lente 0.5x…", "guardado");
+            id = await acharUltra(l.candidatas);
+            if (!id) {
+              lentes = lentes.filter((x) => x !== l);
+              pintarLentes();
+              return avisar("Este celular não libera a lente 0.5x para o app.", "erro");
+            }
+            try { localStorage.setItem("medicao_ultra", id); } catch (e) { /* sem memória */ }
+          }
+          try { await trocarDispositivo(id); } catch (e) {
+            try { localStorage.removeItem("medicao_ultra"); } catch (err) { /* sem memória */ }
+            throw e;
+          }
+        } else if (l.tipo === "camera") await trocarDispositivo(l.deviceId);
         else {
-          if (l.deviceId) await trocarDispositivo(l.deviceId);
+          await trocarDispositivo(l.deviceId || principal);
           await trilha.applyConstraints({ advanced: [{ zoom: l.zoom }] });
         }
         lenteAtual = chave;
@@ -969,11 +1025,14 @@
       } catch (e) {
         console.error(e);
         avisar("Não deu para trocar a lente.", "erro");
+        lenteAtual = lentes.find((x) => x.rotulo === "1x")?.chave || null;
+      } finally {
+        trocando = false;
       }
       el.querySelectorAll("[data-lente]").forEach((b) => b.classList.toggle("ativa", b.dataset.lente === lenteAtual));
     }
     async function montarLentes() {
-      const principal = trilha.getSettings?.().deviceId || "";
+      principal = trilha.getSettings?.().deviceId || "";
       let caps = {};
       try { caps = trilha.getCapabilities?.() || {}; } catch (e) { /* sem suporte */ }
       const z = caps.zoom;
@@ -982,27 +1041,19 @@
         lentes.push({ chave: "z1", rotulo: "1x", tipo: "zoom", zoom: Math.max(1, z.min), deviceId: principal });
         if (z.max >= 2) lentes.push({ chave: "z2", rotulo: "2x", tipo: "zoom", zoom: 2, deviceId: principal });
       }
+      if (!lentes.length) lentes.push({ chave: "d" + principal, rotulo: "1x", tipo: "camera", deviceId: principal });
       if (!lentes.some((l) => l.zoom < 0.95)) {
         let cams = [];
         try { cams = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === "videoinput" && d.deviceId); } catch (e) { /* sem lista */ }
-        const ultra = cams.find((d) => d.deviceId !== principal && /ultra|0[.,]5/i.test(d.label));
-        if (!lentes.length) lentes.push({ chave: "d" + principal, rotulo: "1x", tipo: "camera", deviceId: principal });
-        if (ultra) lentes.unshift({ chave: "d" + ultra.deviceId, rotulo: "0.5x", tipo: "camera", deviceId: ultra.deviceId });
-        else {
-          // Android costuma listar a ultra-angular só como "camera2 2, facing back": dá para escolher a lente
-          const outras = cams.filter((d) => d.deviceId !== principal && ehTraseira(d) && !/tele|zoom/i.test(d.label));
-          outras.forEach((d, k) => lentes.push({ chave: "d" + d.deviceId, rotulo: `Lente ${k + 2}`, tipo: "camera", deviceId: d.deviceId }));
-          lentes.unshift({ chave: "nativa", rotulo: "0.5x", tipo: "nativa" });
-        }
+        // só as outras câmeras de trás (a da frente nunca entra)
+        const candidatas = cams.filter((d) => d.deviceId !== principal && !ehFrontal(d));
+        if (candidatas.length) lentes.unshift({ chave: "ultra", rotulo: "0.5x", tipo: "ultra", candidatas });
       }
       lenteAtual = lentes.find((l) => l.rotulo === "1x")?.chave || null;
-      const caixa = el.querySelector(".camera-lentes");
-      caixa.innerHTML = lentes.map((l) => `<button type="button" data-lente="${esc(l.chave)}" class="${l.chave === lenteAtual ? "ativa" : ""}">${esc(l.rotulo)}</button>`).join("");
-      caixa.hidden = lentes.length < 2;
+      pintarLentes();
       let salva = null;
       try { salva = localStorage.getItem("medicao_lente"); } catch (e) { /* sem memória */ }
-      const l = lentes.find((x) => x.chave === salva);
-      if (l && l.tipo !== "nativa" && salva !== lenteAtual) usarLente(salva, false);
+      if (salva && salva !== lenteAtual && lentes.some((x) => x.chave === salva)) usarLente(salva, false);
     }
     // o botão voltar do celular fecha a câmera em vez de sair do app
     history.pushState({ camera: true }, "");
