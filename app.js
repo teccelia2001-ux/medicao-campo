@@ -905,7 +905,7 @@
     el.innerHTML = `<video playsinline autoplay muted></video><div class="camera-clarao"></div>
       <div class="camera-topo"><b>${esc(p.nome)}</b><span class="camera-cont">0 fotos</span>
         <button type="button" class="camera-lanterna" data-cam="lanterna" hidden aria-label="Lanterna">🔦</button></div>
-      <div class="camera-lentes" hidden></div>
+      <div class="camera-zoom" hidden></div>
       <div class="camera-base">
         <div class="camera-mini"></div>
         <button type="button" class="camera-disparo" data-cam="foto" aria-label="Tirar foto"></button>
@@ -926,135 +926,60 @@
     };
     conferirLanterna();
 
-    /* Lentes (0.5x, 1x, 2x), sempre na câmera de trás e sem sair do app:
-       1) o celular dá zoom abaixo de 1 na própria câmera (Android novo, iPhone);
-       2) a ultra-angular aparece como outra câmera de trás. No Android ela vem só como
-          "camera2 2, facing back": o app testa as câmeras de trás uma vez, escolhe a de
-          foco fixo (a ultra-angular quase sempre é) e guarda a escolha;
-       3) o celular não libera a lente para o navegador: o 0.5x não aparece. */
-    let lentes = [];
-    let lenteAtual = null;
-    let principal = "";
-    const fmtZoom = (v) => `${Math.round(v * 10) / 10}x`;
-    const ehFrontal = (d) => /front|frontal|user|selfie|facing front/i.test(d.label || "");
-    const pedirCamera = (id, alta = true) => navigator.mediaDevices.getUserMedia({
-      audio: false, video: { deviceId: { exact: id }, ...(alta ? { width: { ideal: 1920 }, height: { ideal: 1920 } } : { width: { ideal: 640 } }) },
-    });
-    function mostrarStream(novo) {
-      stream = novo;
-      trilha = novo.getVideoTracks()[0];
-      video.srcObject = novo;
-      video.play().catch(() => {});
-      conferirLanterna();
-    }
-    async function trocarDispositivo(deviceId) {
-      if (trilha.getSettings?.().deviceId === deviceId && trilha.readyState === "live") return;
-      stream.getTracks().forEach((t) => t.stop()); // alguns celulares não abrem duas câmeras ao mesmo tempo
-      let novo;
-      try { novo = await pedirCamera(deviceId); } catch (e) { novo = null; }
-      // nunca fica na câmera da frente: volta para a principal de trás
-      if (novo && novo.getVideoTracks()[0].getSettings?.().facingMode === "user") {
-        novo.getTracks().forEach((t) => t.stop());
-        novo = null;
+    /* Zoom manual: barra embaixo da imagem e pinça com dois dedos na imagem.
+       Se a câmera do celular tem zoom, usa o dela (foto com qualidade cheia);
+       se não tem, o app aproxima a imagem e a foto sai recortada no centro. */
+    let zoom = 1, zoomMin = 1, zoomMax = 3, zoomDaCamera = false; // zoom do app até 3x: mais que isso a foto perde muito detalhe
+    let zoomPendente = null, zoomAplicando = false, pincouEm = 0;
+    const fmtZoom = (v) => `${(Math.round(v * 10) / 10).toFixed(1).replace(".", ",")}x`;
+    async function aplicarZoomCamera() {
+      if (zoomAplicando) return;
+      zoomAplicando = true;
+      while (zoomPendente !== null) {
+        const v = zoomPendente;
+        zoomPendente = null;
+        try { await trilha.applyConstraints({ advanced: [{ zoom: v }] }); } catch (e) { /* segue com o último que deu */ }
       }
-      if (!novo) {
-        mostrarStream(await pedirCamera(principal));
-        throw new Error("lente");
-      }
-      mostrarStream(novo);
+      zoomAplicando = false;
     }
-    /** testa as outras câmeras de trás e devolve a que parece ser a ultra-angular */
-    async function acharUltra(candidatas) {
-      stream.getTracks().forEach((t) => t.stop());
-      let melhor = null, melhorNota = -Infinity;
-      for (const [k, d] of candidatas.entries()) {
-        let s;
-        try { s = await pedirCamera(d.deviceId, false); } catch (e) { continue; }
-        const tr = s.getVideoTracks()[0];
-        let caps = {}, conf = {};
-        try { caps = tr.getCapabilities?.() || {}; conf = tr.getSettings?.() || {}; } catch (e) { /* sem suporte */ }
-        s.getTracks().forEach((t) => t.stop());
-        if (conf.facingMode === "user") continue; // câmera da frente
-        const rotulo = d.label || "";
-        let nota = -k * 0.1; // empate: a de número menor (no Android a ultra costuma vir logo depois da principal)
-        if (/ultra|wide|0[.,]5/i.test(rotulo)) nota += 10;
-        if (/tele|zoom|macro|depth|profund/i.test(rotulo)) nota -= 10;
-        const focos = caps.focusMode || [];
-        if (focos.length && !focos.includes("continuous")) nota += 3; // foco fixo: ultra-angular
-        if (caps.zoom && caps.zoom.min < 0.95) nota += 5;
-        if (nota > melhorNota) { melhorNota = nota; melhor = d.deviceId; }
-      }
-      mostrarStream(await pedirCamera(principal));
-      return melhorNota > -5 ? melhor : null;
+    function definirZoom(v) {
+      zoom = Math.min(zoomMax, Math.max(zoomMin, Math.round(v * 10) / 10));
+      const barra = el.querySelector(".camera-zoom input");
+      if (barra && Number(barra.value) !== zoom) barra.value = zoom;
+      const rotulo = el.querySelector(".camera-zoom-valor");
+      if (rotulo) rotulo.textContent = fmtZoom(zoom);
+      if (zoomDaCamera) { zoomPendente = zoom; aplicarZoomCamera(); }
+      else video.style.transform = zoom > 1 ? `scale(${zoom})` : "";
     }
-    function pintarLentes() {
-      const caixa = el.querySelector(".camera-lentes");
-      caixa.innerHTML = lentes.map((l) => `<button type="button" data-lente="${esc(l.chave)}" class="${l.chave === lenteAtual ? "ativa" : ""}">${esc(l.rotulo)}</button>`).join("");
-      caixa.hidden = lentes.length < 2;
-    }
-    let trocando = false;
-    async function usarLente(chave, guardar = true) {
-      const l = lentes.find((x) => x.chave === chave);
-      if (!l || fechando || trocando) return;
-      trocando = true;
-      try {
-        if (l.tipo === "ultra") {
-          let id = null;
-          try { id = localStorage.getItem("medicao_ultra"); } catch (e) { /* sem memória */ }
-          if (!l.candidatas.some((d) => d.deviceId === id)) {
-            avisar("Procurando a lente 0.5x…", "guardado");
-            id = await acharUltra(l.candidatas);
-            if (!id) {
-              lentes = lentes.filter((x) => x !== l);
-              pintarLentes();
-              return avisar("Este celular não libera a lente 0.5x para o app.", "erro");
-            }
-            try { localStorage.setItem("medicao_ultra", id); } catch (e) { /* sem memória */ }
-          }
-          try { await trocarDispositivo(id); } catch (e) {
-            try { localStorage.removeItem("medicao_ultra"); } catch (err) { /* sem memória */ }
-            throw e;
-          }
-        } else if (l.tipo === "camera") await trocarDispositivo(l.deviceId);
-        else {
-          await trocarDispositivo(l.deviceId || principal);
-          await trilha.applyConstraints({ advanced: [{ zoom: l.zoom }] });
-        }
-        lenteAtual = chave;
-        if (guardar) try { localStorage.setItem("medicao_lente", chave); } catch (e) { /* sem memória */ }
-      } catch (e) {
-        console.error(e);
-        avisar("Não deu para trocar a lente.", "erro");
-        lenteAtual = lentes.find((x) => x.rotulo === "1x")?.chave || null;
-      } finally {
-        trocando = false;
-      }
-      el.querySelectorAll("[data-lente]").forEach((b) => b.classList.toggle("ativa", b.dataset.lente === lenteAtual));
-    }
-    async function montarLentes() {
-      principal = trilha.getSettings?.().deviceId || "";
+    function montarZoom() {
       let caps = {};
       try { caps = trilha.getCapabilities?.() || {}; } catch (e) { /* sem suporte */ }
       const z = caps.zoom;
-      if (z && z.max > z.min) {
-        if (z.min < 0.95) lentes.push({ chave: "z" + z.min, rotulo: fmtZoom(z.min), tipo: "zoom", zoom: z.min, deviceId: principal });
-        lentes.push({ chave: "z1", rotulo: "1x", tipo: "zoom", zoom: Math.max(1, z.min), deviceId: principal });
-        if (z.max >= 2) lentes.push({ chave: "z2", rotulo: "2x", tipo: "zoom", zoom: 2, deviceId: principal });
+      if (z && z.max > Math.max(1, z.min)) {
+        zoomDaCamera = true;
+        zoomMin = Math.max(1, z.min); // sem 0.5x
+        zoomMax = Math.min(10, z.max);
       }
-      if (!lentes.length) lentes.push({ chave: "d" + principal, rotulo: "1x", tipo: "camera", deviceId: principal });
-      if (!lentes.some((l) => l.zoom < 0.95)) {
-        let cams = [];
-        try { cams = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === "videoinput" && d.deviceId); } catch (e) { /* sem lista */ }
-        // só as outras câmeras de trás (a da frente nunca entra)
-        const candidatas = cams.filter((d) => d.deviceId !== principal && !ehFrontal(d));
-        if (candidatas.length) lentes.unshift({ chave: "ultra", rotulo: "0.5x", tipo: "ultra", candidatas });
-      }
-      lenteAtual = lentes.find((l) => l.rotulo === "1x")?.chave || null;
-      pintarLentes();
-      let salva = null;
-      try { salva = localStorage.getItem("medicao_lente"); } catch (e) { /* sem memória */ }
-      if (salva && salva !== lenteAtual && lentes.some((x) => x.chave === salva)) usarLente(salva, false);
+      const caixa = el.querySelector(".camera-zoom");
+      caixa.innerHTML = `<button type="button" class="camera-zoom-valor" data-cam="zoom1" aria-label="Voltar para 1x">1,0x</button>
+        <input type="range" min="${zoomMin}" max="${zoomMax}" step="0.1" value="${zoomMin}" aria-label="Zoom">`;
+      caixa.hidden = false;
+      caixa.querySelector("input").addEventListener("input", (e) => definirZoom(Number(e.target.value)));
+      definirZoom(zoomMin);
     }
+    // pinça com dois dedos na imagem
+    let pinca = null;
+    const distancia = (ts) => Math.hypot(ts[0].clientX - ts[1].clientX, ts[0].clientY - ts[1].clientY);
+    video.addEventListener("touchstart", (e) => {
+      if (e.touches.length === 2) pinca = { d0: distancia(e.touches), z0: zoom };
+    }, { passive: true });
+    video.addEventListener("touchmove", (e) => {
+      if (!pinca || e.touches.length !== 2) return;
+      e.preventDefault();
+      definirZoom(pinca.z0 * (distancia(e.touches) / pinca.d0));
+      pincouEm = Date.now();
+    }, { passive: false });
+    video.addEventListener("touchend", (e) => { if (e.touches.length < 2) pinca = null; }, { passive: true });
     // o botão voltar do celular fecha a câmera em vez de sair do app
     history.pushState({ camera: true }, "");
     const voltar = () => concluir(false);
@@ -1064,17 +989,20 @@
     const tiradas = [];
     let tiradasN = 0;
     let fechando = false;
-    montarLentes();
+    montarZoom();
 
     function disparar() {
       const w0 = video.videoWidth, h0 = video.videoHeight;
       if (!w0 || fechando) return;
       // congela o quadro agora (rápido); o resto vai para a fila
-      const esc1 = Math.min(1, FOTO_MAX / Math.max(w0, h0));
+      // zoom do app: recorta o centro do quadro (o da câmera já vem aproximado)
+      const corte = zoomDaCamera ? 1 : zoom;
+      const sw = w0 / corte, sh = h0 / corte;
+      const esc1 = Math.min(1, FOTO_MAX / Math.max(sw, sh));
       const cv = document.createElement("canvas");
-      cv.width = Math.round(w0 * esc1);
-      cv.height = Math.round(h0 * esc1);
-      cv.getContext("2d").drawImage(video, 0, 0, cv.width, cv.height);
+      cv.width = Math.round(sw * esc1);
+      cv.height = Math.round(sh * esc1);
+      cv.getContext("2d").drawImage(video, (w0 - sw) / 2, (h0 - sh) / 2, sw, sh, 0, 0, cv.width, cv.height);
       const quando = new Date();
       tiradasN++;
       el.querySelector(".camera-cont").textContent = plural(tiradasN, "foto", "fotos");
@@ -1124,19 +1052,18 @@
     }
 
     el.addEventListener("click", async (e) => {
-      const lente = e.target.closest("[data-lente]");
-      if (lente) return usarLente(lente.dataset.lente);
       const b = e.target.closest("[data-cam]");
       if (!b) return;
       if (b.dataset.cam === "foto") return disparar();
       if (b.dataset.cam === "ok") return concluir(true);
+      if (b.dataset.cam === "zoom1") return definirZoom(zoomMin);
       if (b.dataset.cam === "lanterna") {
         lanterna = !lanterna;
         try { await trilha.applyConstraints({ advanced: [{ torch: lanterna }] }); b.classList.toggle("ligada", lanterna); } catch (err) { /* sem lanterna */ }
       }
     });
-    // tocar na imagem também tira a foto
-    video.addEventListener("click", disparar);
+    // tocar na imagem também tira a foto (menos logo depois de pinçar o zoom)
+    video.addEventListener("click", () => { if (Date.now() - pincouEm > 500) disparar(); });
   }
 
   // ---------------------------------------------------------------- espaço no celular

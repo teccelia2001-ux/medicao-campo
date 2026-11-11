@@ -634,15 +634,20 @@ body.com-camera { overflow: hidden; }
 .camera-cont { flex: 1; font-weight: 600; opacity: 0.9; }
 .camera-lanterna { width: 44px; height: 44px; border: 0; border-radius: 50%; background: rgba(255, 255, 255, 0.2); font-size: 20px; }
 .camera-lanterna.ligada { background: #fde047; }
-.camera-lentes {
-  display: flex; justify-content: center; gap: 8px; padding: 10px 12px 2px; background: #000;
+/* zoom manual: barra + pinça na imagem (a imagem aproximada não passa por cima dos botões) */
+.camera { overflow: hidden; }
+.camera video { touch-action: none; transform-origin: center; }
+.camera-topo { z-index: 3; }
+.camera-zoom, .camera-base { position: relative; z-index: 2; }
+.camera-zoom {
+  display: flex; align-items: center; gap: 12px; padding: 10px 20px 2px; background: #000;
 }
-.camera-lentes[hidden] { display: none; }
-.camera-lentes button {
-  min-width: 48px; height: 40px; padding: 0 12px; border: 0; border-radius: 20px;
-  background: rgba(255, 255, 255, 0.16); color: #fff; font-weight: 800; font-size: 14px; touch-action: manipulation;
+.camera-zoom[hidden] { display: none; }
+.camera-zoom-valor {
+  min-width: 58px; height: 40px; padding: 0 10px; border: 0; border-radius: 20px;
+  background: rgba(255, 255, 255, 0.16); color: #fde047; font-weight: 800; font-size: 15px; touch-action: manipulation;
 }
-.camera-lentes button.ativa { background: #fde047; color: #111; }
+.camera-zoom input[type="range"] { flex: 1; height: 40px; accent-color: #fde047; touch-action: pan-x; }
 .camera-base {
   display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
   padding: 16px 20px calc(20px + env(safe-area-inset-bottom)); background: #000;
