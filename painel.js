@@ -278,7 +278,7 @@
     const t = M.totaisObra(o);
     const secoes = M.estrutura(o.pontos).map((s) => `<div class="secao secao-${s.op.toLowerCase()}"><span>${esc(s.titulo)}</span><span>${M.fmtMoeda(s.subtotal)}</span></div>`).join("");
     const dias = o.pontos.filter((p) => p.itens.length && p.dia).map((p) => p.dia).sort();
-    const pontos = o.pontos.map((p) => {
+    const pontos = M.ordenarPontos(o.pontos).map((p) => {
       const tp = M.totaisPonto(p);
       // mesmo padrão da medição geral: seção por operação e departamento, categorias e total
       const tabela = M.estrutura([p]).map((s) => {

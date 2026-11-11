@@ -88,6 +88,9 @@
       us: p.itens.reduce((t, i) => t + numero(i.quantidade) * i.us, 0),
     };
   }
+  /** pontos em ordem de número (P1, P2 ... P10), como saem na medição */
+  const ordenarPontos = (pontos) => [...pontos].sort((a, b) =>
+    String(a.nome || "").localeCompare(String(b.nome || ""), "pt-BR", { numeric: true, sensitivity: "base" }));
   function totaisObra(o) {
     const todos = o.pontos.flatMap((p) => p.itens);
     return { valor: soma(todos, valorItem), us: todos.reduce((t, i) => t + numero(i.quantidade) * i.us, 0) };
@@ -325,7 +328,7 @@
     try {
       logoId = wb.addImage({ base64: await imagemBase64("logo-teccel-red.png"), extension: "png" });
     } catch (e) { /* sem logo */ }
-    const pontos = obra.pontos;
+    const pontos = ordenarPontos(obra.pontos);
 
     // 1) Fechamento simplificado: a obra toda somada (igual à medição do Termômetro)
     const ws = wb.addWorksheet(`FECHAMENTO OBRA ${obra.numero}`.slice(0, 31));
@@ -393,7 +396,7 @@
     const M = 10, TOPO = 8, PE = 10;
     const L = 210 - 2 * M;
     const alturaPag = 297;
-    const pontos = obra.pontos;
+    const pontos = ordenarPontos(obra.pontos);
     const secoes = estrutura(pontos);
     const total = secoes.reduce((t, s) => t + s.subtotal, 0);
     const totalUs = secoes.reduce((t, s) => t + s.subtotalUs, 0);
@@ -637,7 +640,7 @@
 
   window.Medicao = {
     SERVICOS: [], POR_ID: new Map(), DEPARTAMENTOS: [], OPERACOES, usarCatalogo, valorUS, anoUS, numero, valorItem, soma,
-    fmtMoeda, fmtNum, fmtQtd, fmtDia, fmtHora, utm, fmtUtm, totaisPonto, totaisObra, estrutura, categoria,
+    fmtMoeda, fmtNum, fmtQtd, fmtDia, fmtHora, utm, fmtUtm, totaisPonto, totaisObra, ordenarPontos, estrutura, categoria,
     gerarExcel, gerarPdf, blobParaDataUrl, catalogoGeradoEm: null,
   };
 })();

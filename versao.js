@@ -1,3 +1,3 @@
 /* Versão do app: o número aparece em Ajustes e o sw.js usa para guardar os arquivos.
    Mudou qualquer arquivo do app → some 1 no número e troque a data. */
-self.VERSAO_APP = { numero: 28, data: "11/11/2026" };
+self.VERSAO_APP = { numero: 29, data: "11/11/2026" };
