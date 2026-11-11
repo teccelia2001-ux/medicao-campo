@@ -317,7 +317,7 @@
         <div class="linha-topo">${o.selo}<small class="sub">alterada ${M.fmtHora(o.atualizada_em)}</small></div>
       </button>`;
     return `<div class="pagina pagina-larga">
-      ${topo("", null, `<nav class="troca" aria-label="Trocar entre app e painel"><span class="ativo">📱 App</span><a href="painel.html">📊 Painel</a></nav><button type="button" class="link link-ajustes" data-acao="config" aria-label="Ajustes">⚙<span> Ajustes</span></button>`)}
+      ${topo("", null, `<nav class="troca" aria-label="Trocar entre app e painel"><span class="ativo">📱 App</span><a href="painel.html">📊 Painel</a></nav><button type="button" class="link link-ajustes${estado.novaVersao ? " novidade" : ""}" data-acao="config" aria-label="Ajustes">⚙<span> Ajustes</span></button>`)}
       ${!estado.online ? `<div class="faixa faixa-guardado">Sem internet: aparecem só as obras guardadas no celular. O que você lançar sobe para o banco quando o sinal voltar.</div>`
         : pendentes ? `<div class="faixa faixa-guardado">${estado.enviando ? "⟳ Enviando" : "⏳ Aguardando envio de"} ${plural(pendentes, "obra", "obras")} ao banco…</div>`
           : `<div class="faixa faixa-ok">✓ Tudo salvo no banco</div>`}
@@ -363,6 +363,15 @@
           : `<label class="chave-linha"><input type="checkbox" data-acao="copia-fotos" ${copiaLigada() ? "checked" : ""}>
               <span>Salvar uma cópia de cada foto tirada no celular <small>(pasta Download, aparece na galeria)</small></span></label>`}
         <p class="sub">As fotos também ficam guardadas no app e sobem para o banco.</p>
+      </section>
+      <section class="cartao dados">
+        <b>Versão do app</b>
+        <p class="sub">Você está na <b>versão ${esc(versaoAtual().numero)}</b>${versaoAtual().data ? ` · de ${esc(versaoAtual().data)}` : ""}.</p>
+        ${estado.novaVersao
+          ? `<p class="versao-nova">Nova versão ${esc(estado.novaVersao.numero)} disponível${estado.novaVersao.data ? ` (${esc(estado.novaVersao.data)})` : ""}.</p>
+            <button type="button" class="botao" data-acao="atualizar-app">⬇ Atualizar agora</button>
+            <small class="sub">O que você lançou fica guardado; o app só recarrega.</small>`
+          : `<button type="button" class="botao botao-claro" data-acao="procurar-versao">${estado.procurandoVersao ? "Procurando…" : "🔄 Procurar atualização"}</button>`}
       </section>
       <section class="cartao dados">
         <b>Espaço no celular</b>
@@ -1273,6 +1282,8 @@
         carregarAjustes();
         return mostrarEspaco();
       }
+      case "procurar-versao": return procurarVersao(true);
+      case "atualizar-app": return atualizarApp();
       case "sair": return sairDaConta();
       case "filtro":
         estado.filtro = alvo.dataset.f;
@@ -1613,9 +1624,11 @@
    *  valor da época (regra do Termômetro); o novo vale para os próximos lançamentos. */
   let catalogoConferidoEm = 0;
   async function conferirCatalogo(forcar = false) {
-    if (!navigator.onLine || !Nuvem.lerSessao() || !estado.perfil) return;
+    if (!navigator.onLine) return;
     if (!forcar && Date.now() - catalogoConferidoEm < 5 * 60000) return;
     catalogoConferidoEm = Date.now();
+    procurarVersao();
+    if (!Nuvem.lerSessao() || !estado.perfil) return;
     try {
       const novo = await Nuvem.catalogo();
       if (!novo.servicos.length) return;
@@ -1630,6 +1643,44 @@
     } catch (e) { /* tenta na próxima */ }
   }
   setInterval(() => conferirCatalogo(true), 15 * 60000);
+
+  // ------------------------------------------------------------------ versão do app
+  /* versao.js diz o número; o app pergunta ao servidor se saiu outro (ao abrir, ao
+     voltar o sinal, ao voltar para o app e a cada 15 min) e mostra em Ajustes. */
+  const versaoAtual = () => window.VERSAO_APP || { numero: "?", data: "" };
+  async function procurarVersao(manual = false) {
+    if (!navigator.onLine) { if (manual) avisar("Sem internet para procurar atualização.", "erro"); return; }
+    if (manual) { estado.procurandoVersao = true; if (estado.tela === "config") render(); }
+    try {
+      const txt = await (await fetch("versao.js", { cache: "no-store" })).text();
+      const numero = Number((txt.match(/numero:\s*(\d+)/) || [])[1]);
+      const data = (txt.match(/data:\s*"([^"]*)"/) || [])[1] || "";
+      const antes = estado.novaVersao?.numero;
+      estado.novaVersao = numero > Number(versaoAtual().numero) ? { numero, data } : null;
+      if (manual && !estado.novaVersao) avisar("Você já está na versão mais nova.");
+      if (manual || antes !== estado.novaVersao?.numero) {
+        if ((estado.tela === "config" || estado.tela === "inicio") && !estado.escolhido && !document.activeElement?.matches?.("input, textarea")) render();
+      }
+    } catch (e) {
+      if (manual) avisar("Não deu para procurar agora. Tente de novo.", "erro");
+    } finally {
+      if (manual) { estado.procurandoVersao = false; if (estado.tela === "config") render(); }
+    }
+  }
+  async function atualizarApp() {
+    avisar("Atualizando o app…", "guardado");
+    await salvarAgora();
+    try {
+      const reg = await navigator.serviceWorker?.getRegistration();
+      if (reg) {
+        // a versão nova se instala e assume; o "controllerchange" recarrega a página
+        const assumiu = new Promise((ok) => navigator.serviceWorker.addEventListener("controllerchange", ok, { once: true }));
+        await reg.update();
+        await Promise.race([assumiu, new Promise((ok) => setTimeout(ok, 8000))]);
+      }
+    } catch (e) { /* recarrega assim mesmo */ }
+    location.reload();
+  }
 
   async function sairDaConta(forcado = false) {
     if (!forcado) {

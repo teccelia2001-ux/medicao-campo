@@ -1,8 +1,10 @@
 /* Guarda o app e as bibliotecas no celular para abrir sem internet.
-   Ao mudar qualquer arquivo, suba a VERSAO para os celulares pegarem a nova. */
-const VERSAO = "medicao-v25";
+   Ao mudar qualquer arquivo, suba o número em versao.js para os celulares pegarem a nova. */
+importScripts("versao.js");
+const VERSAO = "medicao-v" + self.VERSAO_APP.numero;
 const ARQUIVOS = [
   "./",
+  "versao.js",
   "index.html",
   "app.css",
   "app.js",
