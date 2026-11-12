@@ -100,17 +100,20 @@
   /** Foto do aparelho; se ela só existe no banco (obra aberta de lá), baixa e guarda. */
   async function fotoLocal(obra, id) {
     const f = await Banco.obterFoto(id);
-    if (f) return f;
-    if (!navigator.onLine || !Nuvem.lerSessao()) return null;
+    const info = obra.fotos_info?.[id] || {};
+    // guardada com a faixa antiga (refeita em outro aparelho): baixa de novo
+    const velha = f && f.enviada && info.faixa_em && f.faixa_em !== info.faixa_em;
+    if (f && !velha) return f;
+    if (!navigator.onLine || !Nuvem.lerSessao()) return f || null;
     try {
       const blob = await Nuvem.baixarFoto(obra.id, id);
-      const info = obra.fotos_info?.[id] || {};
       const p = obra.pontos.find((x) => x.fotos.includes(id));
-      const nova = { id, obraId: obra.id, pontoId: p?.id || info.pontoId, blob, enviada: true, criada_em: info.criada_em, gps: info.gps, largura: info.largura, altura: info.altura };
+      const nova = { ...(f || {}), id, obraId: obra.id, pontoId: p?.id || info.pontoId, blob, enviada: true, criada_em: info.criada_em, gps: info.gps, largura: info.largura, altura: info.altura, faixa_em: info.faixa_em || null };
+      delete nova.faixa; // não se sabe o texto exato da faixa baixada
       await Banco.salvarFoto(nova);
       return nova;
     } catch (e) {
-      return null;
+      return f || null;
     }
   }
   const carregando = new Set();
@@ -814,14 +817,16 @@
     const ctx = cv.getContext("2d");
     const fs = Math.max(14, Math.round(Math.min(w, h) * 0.032));
     const alt = fs * 1.35 * linhas.length + fs * 0.6;
-    ctx.fillStyle = "rgba(0,0,0,0.55)";
-    ctx.fillRect(0, h - alt, w, alt);
+    // faixa preta sólida: ao refazer (ponto renomeado, UTM nova) cobre a escrita antiga por inteiro
+    const topo = Math.max(0, Math.floor(h - alt) - 1);
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, topo, w, h - topo);
     ctx.fillStyle = "#fff";
     ctx.font = `600 ${fs}px system-ui, -apple-system, Segoe UI, Roboto, sans-serif`;
     ctx.textBaseline = "top";
     linhas.forEach((t, k) => ctx.fillText(t, fs * 0.6, h - alt + fs * 0.3 + k * fs * 1.35));
     const blob = await new Promise((ok) => cv.toBlob(ok, "image/jpeg", qualidade));
-    return { blob, largura: w, altura: h };
+    return { blob, largura: w, altura: h, faixa: linhas.join("\n") };
   }
 
   /** Reduz a foto e grava na parte de baixo a obra, o ponto, a data/hora e o GPS.
@@ -870,6 +875,53 @@
     `OBRA ${o.numero} · ${p.nome}`,
     `${quando.toLocaleDateString("pt-BR")} ${quando.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}${p.gps ? ` · ${M.fmtUtm(p.gps)}` : ""}`,
   ];
+
+  /* O nome do ponto, a UTM ou o número da obra mudou depois da foto: refaz a faixa escrita
+     nas fotos já tiradas (a nova é preta e cobre a antiga; data e hora continuam as da foto)
+     e marca a foto para subir de novo ao banco, por cima da antiga. */
+  let filaFaixas = Promise.resolve();
+  function refazerFaixas(o, pontos) {
+    if (!o || soLeitura(o)) return filaFaixas;
+    const lista = pontos.filter((p) => p.fotos.length);
+    if (!lista.length) return filaFaixas;
+    filaFaixas = filaFaixas.then(() => refazerFaixasAgora(o, lista)).catch((e) => console.error(e));
+    return filaFaixas;
+  }
+  async function refazerFaixasAgora(o, pontos) {
+    let n = 0;
+    for (const p of pontos) {
+      for (const id of [...p.fotos]) {
+        const f = await fotoLocal(o, id);
+        if (!f?.blob) continue;
+        const linhas = linhasCarimbo(o, p, new Date(f.criada_em || Date.now()));
+        if (f.faixa === linhas.join("\n")) continue; // já está certa
+        const img = await abrirImagem(f.blob);
+        const cv = document.createElement("canvas");
+        cv.width = img.width;
+        cv.height = img.height;
+        cv.getContext("2d").drawImage(img, 0, 0);
+        if (img.close) img.close();
+        const pronta = await carimbarCanvas(cv, 0.85, linhas);
+        Object.assign(f, pronta, { gps: p.gps || null, faixa_em: new Date().toISOString(), enviada: false });
+        await Banco.salvarFoto(f);
+        const antiga = estado.miniaturas.get(id);
+        if (antiga) {
+          estado.miniaturas.set(id, URL.createObjectURL(f.blob));
+          setTimeout(() => URL.revokeObjectURL(antiga), 60000); // a tela pode ainda estar mostrando
+        }
+        n++;
+      }
+    }
+    if (!n) return;
+    // a obra volta a ficar pendente para as fotos refeitas subirem
+    if (estado.obra?.id === o.id) await salvarAgora();
+    else {
+      const atual = await Banco.obterObra(o.id);
+      if (atual) { await Banco.salvarObra(atual); enviarDepois(); }
+    }
+    if (estado.obra?.id === o.id && !estado.escolhido && !document.activeElement?.matches?.("input, textarea")) render();
+    avisar(n > 1 ? `Nome e UTM atualizados em ${n} fotos.` : "Nome e UTM atualizados na foto.");
+  }
 
   /** câmera do próprio celular; a entrada fica fora da tela para não sumir quando a tela é redesenhada */
   function cameraDoCelular() {
@@ -1130,6 +1182,7 @@
         salvarAgora();
         render();
         avisar("Localização marcada.");
+        refazerFaixas(estado.obra, [p]);
       },
       () => avisar("Não foi possível pegar a localização. Confira se o GPS está ligado e permitido.", "erro"),
       { enableHighAccuracy: true, timeout: 20000, maximumAge: 30000 },
@@ -1159,6 +1212,7 @@
     const repetida = (await Banco.listarObras()).find((x) => x.numero === numero && x.id !== o.id);
     if (repetida && !confirm(`Já existe a obra ${numero} neste celular. Criar outra com o mesmo número?`)) return;
     const nova = !o.criada_em;
+    const mudouNumero = !nova && o.numero !== numero;
     Object.assign(o, { numero, municipio: v("f-municipio"), obs: v("f-obs") });
     if (nova) {
       o.criada_em = new Date().toISOString();
@@ -1167,6 +1221,7 @@
     await salvarAgora();
     Banco.pedirPersistencia();
     irPara("obra");
+    if (mudouNumero) refazerFaixas(o, o.pontos);
   }
 
   function novoPonto() {
@@ -1187,6 +1242,8 @@
         p.gps = { lat: pos.coords.latitude, lng: pos.coords.longitude, prec: pos.coords.accuracy, em: new Date().toISOString() };
         salvarAgora();
         if (estado.tela === "ponto" && estado.pontoId === p.id) render();
+        // foto tirada antes de a localização chegar ganha a UTM na faixa
+        if (estado.obra?.pontos.includes(p)) refazerFaixas(estado.obra, [p]);
       },
       () => {},
       { enableHighAccuracy: true, timeout: 20000, maximumAge: 60000 },
@@ -1561,6 +1618,7 @@
       if (!p.nome.trim()) p.nome = proximoNome(estado.obra);
       salvarAgora();
       render();
+      refazerFaixas(estado.obra, [p]);
     }
   });
 

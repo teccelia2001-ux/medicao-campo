@@ -23,7 +23,7 @@
     constructor(msg, status) { super(msg); this.status = status; }
   }
 
-  async function chamar(caminho, { metodo = "GET", corpo, cabecalhos = {}, autenticado = true, bruto = false } = {}) {
+  async function chamar(caminho, { metodo = "GET", corpo, cabecalhos = {}, autenticado = true, bruto = false, cache } = {}) {
     const h = { apikey: CFG.chave, ...cabecalhos };
     if (autenticado) h.Authorization = `Bearer ${await token()}`;
     if (corpo !== undefined && !(corpo instanceof Blob) && !h["Content-Type"]) h["Content-Type"] = "application/json";
@@ -36,6 +36,7 @@
         headers: h,
         body: corpo === undefined ? undefined : corpo instanceof Blob ? corpo : JSON.stringify(corpo),
         signal: ctl.signal,
+        ...(cache ? { cache } : {}),
       });
     } catch (e) {
       throw new ErroNuvem("Sem conexão com o banco.", 0);
@@ -151,8 +152,9 @@
     chamar(`/storage/v1/object/medicao-fotos/${caminhoFoto(obraId, foto.id)}`, {
       metodo: "POST", corpo: foto.blob, cabecalhos: { "Content-Type": "image/jpeg", "x-upsert": "true" },
     });
+  // sem cache do navegador: a foto com a faixa refeita fica no mesmo endereço da antiga
   const baixarFoto = async (obraId, fotoId) =>
-    (await chamar(`/storage/v1/object/authenticated/medicao-fotos/${caminhoFoto(obraId, fotoId)}`, { bruto: true })).blob();
+    (await chamar(`/storage/v1/object/authenticated/medicao-fotos/${caminhoFoto(obraId, fotoId)}`, { bruto: true, cache: "no-store" })).blob();
   const listarFotos = async (obraId) =>
     (await chamar("/storage/v1/object/list/medicao-fotos", { metodo: "POST", corpo: { prefix: `${obraId}/`, limit: 1000 } }))
       .map((o) => o.name.replace(/\.jpg$/, ""));
@@ -176,7 +178,8 @@
     const infos = {};
     for (const f of fotosLocais) {
       if (!usadas.has(f.id)) continue;
-      infos[f.id] = { pontoId: f.pontoId, criada_em: f.criada_em, gps: f.gps || null, largura: f.largura, altura: f.altura };
+      // faixa_em: quando a faixa da foto foi refeita; quem tem a antiga guardada baixa de novo
+      infos[f.id] = { pontoId: f.pontoId, criada_em: f.criada_em, gps: f.gps || null, largura: f.largura, altura: f.altura, faixa_em: f.faixa_em || null };
     }
     // foto que veio do banco e ainda não foi baixada neste aparelho
     for (const id of usadas) if (!infos[id] && obra.fotos_info?.[id]) infos[id] = obra.fotos_info[id];

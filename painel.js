@@ -81,11 +81,17 @@
   /** Foto: do cache do navegador ou do banco (fica guardada para o PDF). */
   async function foto(obra, id) {
     let f = await Banco.obterFoto(id);
-    if (!f) {
-      const blob = await Nuvem.baixarFoto(obra.id, id);
-      const info = obra.fotos_info?.[id] || {};
-      f = { id, obraId: obra.id, pontoId: info.pontoId, blob, enviada: true, criada_em: info.criada_em, gps: info.gps, largura: info.largura, altura: info.altura };
-      await Banco.salvarFoto(f);
+    const info = obra.fotos_info?.[id] || {};
+    // guardada com a faixa antiga (o supervisor renomeou o ponto ou marcou a UTM depois): baixa de novo
+    const velha = f && info.faixa_em && f.faixa_em !== info.faixa_em;
+    if (!f || velha) {
+      try {
+        const blob = await Nuvem.baixarFoto(obra.id, id);
+        f = { id, obraId: obra.id, pontoId: info.pontoId, blob, enviada: true, criada_em: info.criada_em, gps: info.gps, largura: info.largura, altura: info.altura, faixa_em: info.faixa_em || null };
+        await Banco.salvarFoto(f);
+      } catch (e) {
+        if (!f) throw e; // sem a nova, fica a guardada
+      }
     }
     return f;
   }
