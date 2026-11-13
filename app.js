@@ -78,6 +78,10 @@
   }
 
   async function irPara(tela, extra = {}) {
+    const saindo = estado.tela === "ponto" ? ponto() : null;
+    if (saindo?.geral && !saindo.itens.length && !saindo.fotos.length && !saindo.obs && (extra.pontoId !== saindo.id)) {
+      estado.obra.pontos = estado.obra.pontos.filter((x) => x !== saindo);
+    }
     await salvarAgora();
     Object.assign(estado, { tela, busca: "", escolhido: null, qtd: "", arquivo: null }, extra);
     if (tela === "inicio") {
@@ -432,7 +436,7 @@
       const t = M.totaisObra(o);
       return {
         id: o.id, numero: o.numero, cidade: o.municipio || o.local || "", total: t.valor,
-        pontos: o.pontos.length, fotos: o.pontos.reduce((n, p) => n + p.fotos.length, 0),
+        pontos: M.pontosReais(o.pontos).length, fotos: o.pontos.reduce((n, p) => n + p.fotos.length, 0),
         atualizada_em: o.atualizada_em, supervisor: soLeitura(o) ? o.supervisor_nome || r?.supervisor_nome : estado.perfil?.nome,
         selo: seloHtml(o),
       };
@@ -565,12 +569,20 @@
     const t = M.totaisObra(o);
     // pesquisa do ponto: nome, observação ou serviço lançado (código, descrição ou nome curto)
     const termos = normalizar(estado.filtroPonto || "").split(/\s+/).filter(Boolean);
+    // os serviços da obra (sem ponto) têm cartão próprio, fora da lista de pontos
+    const reais = M.pontosReais(o.pontos);
+    const geral = o.pontos.find((p) => p.geral);
+    const tg = geral ? M.totaisPonto(geral) : null;
+    const cartaoGeral = soLeitura(o) && !geral?.itens.length ? "" : `<button type="button" class="cartao ponto-item ponto-geral" data-acao="abrir-geral">
+        <div class="linha-topo"><b class="ponto-nome">🧰 Serviços da obra <small>(sem ponto)</small></b>${tg?.valor ? `<b class="valor">${M.fmtMoeda(tg.valor)}</b>` : ""}</div>
+        <small class="sub">${geral?.itens.length ? `${plural(geral.itens.length, "serviço", "serviços")} · somam no total da obra` : "Serviço que não é de um ponto: lance aqui e ele soma no total da obra"}</small>
+      </button>`;
     const achados = termos.length
-      ? o.pontos.filter((p) => {
+      ? reais.filter((p) => {
         const texto = normalizar([p.nome, p.obs, ...p.itens.flatMap((i) => [i.codigo, i.descricao, nomeNaTela(i)])].join(" "));
         return termos.every((x) => texto.includes(x));
       })
-      : o.pontos;
+      : reais;
     const ordenados = [...achados].sort((a, b) => (estado.ordemPontos === "decr" ? -cmpPonto(a, b) : cmpPonto(a, b)));
     const pontos = ordenados.map((p) => {
       const tp = M.totaisPonto(p);
@@ -589,21 +601,22 @@
         <span class="chip-obra"><small>OBRA</small><b>${esc(o.numero)}</b></span>
         <span class="chip chip-total">Total <b>${M.fmtMoeda(t.valor)}</b></span>
         <span class="chip chip-us"><b>${M.fmtNum(t.us)}</b> US</span>
-        <span class="chip"><b>${o.pontos.length}</b> ${o.pontos.length === 1 ? "ponto" : "pontos"}</span>
+        <span class="chip"><b>${reais.length}</b> ${reais.length === 1 ? "ponto" : "pontos"}</span>
       </div>
       ${o.local || o.municipio || o.equipe ? `<p class="sub">${esc([o.local, o.municipio, o.equipe].filter(Boolean).join(" · "))}</p>` : ""}
       ${soLeitura(o) ? "" : `<button type="button" class="botao botao-grande" data-acao="novo-ponto">+ Novo ponto <small>${esc(proximoNome(o))}</small></button>`}
+      ${cartaoGeral}
       <section class="bloco">
         <div class="titulo-pontos">
-          <h2>Pontos da obra ${termos.length ? `<small class="sub-inline">(${achados.length} de ${o.pontos.length})</small>` : ""}</h2>
-          ${o.pontos.length > 1 ? `<div class="ordem" role="group" aria-label="Ordem dos pontos">
+          <h2>Pontos da obra ${termos.length ? `<small class="sub-inline">(${achados.length} de ${reais.length})</small>` : ""}</h2>
+          ${reais.length > 1 ? `<div class="ordem" role="group" aria-label="Ordem dos pontos">
             <button type="button" data-acao="ordem-pontos" data-ordem="cresc" class="${estado.ordemPontos === "cresc" ? "ativo" : ""}" aria-pressed="${estado.ordemPontos === "cresc"}">↑ P1…P9</button>
             <button type="button" data-acao="ordem-pontos" data-ordem="decr" class="${estado.ordemPontos === "decr" ? "ativo" : ""}" aria-pressed="${estado.ordemPontos === "decr"}">↓ P9…P1</button>
           </div>` : ""}
         </div>
-        ${o.pontos.length ? `<label class="campo campo-pesquisa"><input id="filtro-ponto" type="search" value="${esc(estado.filtroPonto || "")}" placeholder="Pesquisar ponto: P3, observação ou serviço (ex.: poste, 62297)" autocomplete="off"></label>` : ""}
+        ${reais.length ? `<label class="campo campo-pesquisa"><input id="filtro-ponto" type="search" value="${esc(estado.filtroPonto || "")}" placeholder="Pesquisar ponto: P3, observação ou serviço (ex.: poste, 62297)" autocomplete="off"></label>` : ""}
         ${pontos ? `<div class="grade-pontos">${pontos}</div>`
-          : o.pontos.length ? `<p class="vazio">Nenhum ponto encontrado.</p>`
+          : reais.length ? `<p class="vazio">Nenhum ponto encontrado.</p>`
             : `<p class="vazio">Nenhum ponto ainda. Cada poste ou trecho é um ponto (P1, P2...).</p>`}
       </section>
       <section class="bloco acoes-obra">
@@ -726,30 +739,32 @@
       return `<button type="button" class="miniatura" data-acao="ver-foto" data-id="${id}">${url ? `<img src="${url}" alt="Foto ${k + 1}">` : "…"}</button>`;
     }).join("");
 
-    const outros = o.pontos.length > 1;
-    const idx = o.pontos.indexOf(p);
+    // anterior / próximo só entre os pontos (os serviços da obra ficam fora)
+    const lista = M.pontosReais(o.pontos);
+    const outros = !p.geral && lista.length > 1;
+    const idx = lista.indexOf(p);
     const u = p.gps ? M.utm(p.gps.lat, p.gps.lng) : null;
 
     return `<div class="pagina pagina-form pagina-larga">
-      ${topo(p.nome, "obra", `<span class="topo-equipe">Obra ${esc(o.numero)}</span>`)}
+      ${topo(p.geral ? "Serviços da obra" : p.nome, "obra", `<span class="topo-equipe">Obra ${esc(o.numero)}</span>`)}
       ${outros ? `<div class="navega">
-        <button type="button" class="link" data-acao="ponto-ant" ${idx === 0 ? "disabled" : ""}>‹ ${idx > 0 ? esc(o.pontos[idx - 1].nome) : ""}</button>
-        <small>${idx + 1} de ${o.pontos.length}</small>
-        <button type="button" class="link" data-acao="ponto-prox" ${idx === o.pontos.length - 1 ? "disabled" : ""}>${idx < o.pontos.length - 1 ? esc(o.pontos[idx + 1].nome) : ""} ›</button>
+        <button type="button" class="link" data-acao="ponto-ant" ${idx === 0 ? "disabled" : ""}>‹ ${idx > 0 ? esc(lista[idx - 1].nome) : ""}</button>
+        <small>${idx + 1} de ${lista.length}</small>
+        <button type="button" class="link" data-acao="ponto-prox" ${idx === lista.length - 1 ? "disabled" : ""}>${idx < lista.length - 1 ? esc(lista[idx + 1].nome) : ""} ›</button>
       </div>` : ""}
       <div class="ponto-colunas"><div class="ponto-col">
       <fieldset class="conjunto" ${soLeitura(o) ? "disabled" : ""}>
       <section class="cartao dados">
-        <label class="campo">Ponto
+        ${p.geral ? `<p class="faixa faixa-geral">🧰 <b>Serviços da obra, sem ponto.</b> O que for lançado aqui soma no total da obra e sai na medição como <b>SERVIÇOS GERAIS</b>.</p>` : `<label class="campo">Ponto
           <input id="p-nome" value="${esc(p.nome)}" placeholder="P1" autocapitalize="characters">
-        </label>
+        </label>`}
         <label class="campo"><span>Observação <small>(se tiver)</small></span>
-          <textarea id="p-obs" rows="2" placeholder="Ex.: poste novo 11/300, troca de cruzeta">${esc(p.obs)}</textarea>
+          <textarea id="p-obs" rows="2" placeholder="${p.geral ? "Ex.: serviços do trecho todo" : "Ex.: poste novo 11/300, troca de cruzeta"}">${esc(p.obs)}</textarea>
         </label>
-        <div class="gps">
+        ${p.geral ? "" : `<div class="gps">
           ${u ? `<span class="utm"><small>UTM ${esc(u.zona)}</small> <b>X</b> ${u.x} <b>Y</b> ${u.y} <small>±${Math.round(p.gps.prec || 0)} m</small></span>` : `<span class="sub">Sem coordenada</span>`}
           <button type="button" class="link" data-acao="gps">${p.gps ? "Atualizar" : "📍 Marcar coordenada"}</button>
-        </div>
+        </div>`}
       </section>
       </fieldset>
 
@@ -765,11 +780,11 @@
       </div><div class="ponto-col">
 
       <fieldset class="conjunto" ${soLeitura(o) ? "disabled" : ""}>
-      ${secoes || `<p class="vazio">Nenhum serviço lançado neste ponto.</p>`}
+      ${secoes || `<p class="vazio">Nenhum serviço lançado ${p.geral ? "sem ponto" : "neste ponto"}.</p>`}
       </fieldset>
 
       <section class="cartao dados">
-        <div class="linha-topo"><b>Fotos do ponto</b><small class="sub">${plural(p.fotos.length, "foto", "fotos")}</small></div>
+        <div class="linha-topo"><b>${p.geral ? "Fotos" : "Fotos do ponto"}</b><small class="sub">${plural(p.fotos.length, "foto", "fotos")}</small></div>
         ${fotos ? `<div class="fotos">${fotos}</div>
         <button type="button" class="link link-galeria" data-acao="fotos-galeria">💾 Salvar ${p.fotos.length === 1 ? "a foto" : `as ${p.fotos.length} fotos`} no celular</button>` : ""}
         <div class="dupla" ${soLeitura(o) ? "hidden" : ""}>
@@ -779,14 +794,14 @@
         </div>
       </section>
 
-      ${soLeitura(o) ? "" : `<button type="button" class="botao botao-perigo botao-pequeno" data-acao="excluir-ponto">Excluir ponto ${esc(p.nome)}</button>`}
+      ${soLeitura(o) ? "" : `<button type="button" class="botao botao-perigo botao-pequeno" data-acao="excluir-ponto">${p.geral ? "Excluir os serviços sem ponto" : `Excluir ponto ${esc(p.nome)}`}</button>`}
       </div></div>
 
       <div class="rodape">
-        <div class="rodape-total"><span>Total do ponto</span><b id="total-ponto">${M.fmtMoeda(tp.valor)}</b></div>
+        <div class="rodape-total"><span>${p.geral ? "Total sem ponto" : "Total do ponto"}</span><b id="total-ponto">${M.fmtMoeda(tp.valor)}</b></div>
         <div class="dupla" ${soLeitura(o) ? "hidden" : ""}>
-          <button type="button" class="botao botao-claro" data-acao="obra">Concluir ponto</button>
-          <button type="button" class="botao" data-acao="novo-ponto">Próximo ponto ›</button>
+          <button type="button" class="botao botao-claro" data-acao="obra">${p.geral ? "Concluir" : "Concluir ponto"}</button>
+          <button type="button" class="botao" data-acao="novo-ponto">${p.geral ? "+ Novo ponto" : "Próximo ponto ›"}</button>
         </div>
       </div>
       ${folhaHtml()}
@@ -846,8 +861,8 @@
     const o = estado.obra;
     const t = M.totaisObra(o);
     const secoes = M.estrutura(o.pontos);
-    const semServico = o.pontos.filter((p) => !p.itens.length);
-    const semFoto = o.pontos.filter((p) => !p.fotos.length);
+    const semServico = M.pontosReais(o.pontos).filter((p) => !p.itens.length);
+    const semFoto = M.pontosReais(o.pontos).filter((p) => !p.fotos.length);
     const resumo = secoes.map((s) => `<section class="bloco">
       <h2 class="secao secao-${s.op.toLowerCase()}"><span>${esc(s.titulo)}</span><span>${M.fmtMoeda(s.subtotal)}</span></h2>
       ${s.cats.map(([cat, itens]) => `<div class="cartao resumo-cat">
@@ -1530,15 +1545,25 @@
       case "obra": return irPara("obra");
       case "novo-ponto": return novoPonto();
       case "abrir-ponto": return irPara("ponto", { pontoId: alvo.dataset.id });
+      case "abrir-geral": {
+        // serviços da obra sem ponto: guardado como um ponto marcado com `geral`, criado no primeiro toque
+        let g = o.pontos.find((p) => p.geral);
+        if (!g) {
+          g = { id: novoId(), nome: "SERVIÇOS GERAIS", geral: true, dia: hoje(), obs: "", gps: null, itens: [], fotos: [] };
+          o.pontos.push(g);
+        }
+        return irPara("ponto", { pontoId: g.id });
+      }
       case "ponto-ant":
       case "ponto-prox": {
-        const idx = o.pontos.findIndex((p) => p.id === estado.pontoId) + (alvo.dataset.acao === "ponto-ant" ? -1 : 1);
-        if (o.pontos[idx]) return irPara("ponto", { pontoId: o.pontos[idx].id });
+        const lista = M.pontosReais(o.pontos);
+        const idx = lista.findIndex((p) => p.id === estado.pontoId) + (alvo.dataset.acao === "ponto-ant" ? -1 : 1);
+        if (lista[idx]) return irPara("ponto", { pontoId: lista[idx].id });
         return;
       }
       case "excluir-ponto": {
         const p = ponto();
-        if (!confirm(`Excluir o ponto ${p.nome}? Os serviços dele saem da medição.${p.fotos.length ? ` As ${plural(p.fotos.length, "foto", "fotos")} continuam guardadas no celular e no banco.` : ""}`)) return;
+        if (!confirm(`${p.geral ? "Excluir os serviços lançados sem ponto? Eles saem" : `Excluir o ponto ${p.nome}? Os serviços dele saem`} da medição.${p.fotos.length ? ` As ${plural(p.fotos.length, "foto", "fotos")} continuam guardadas no celular e no banco.` : ""}`)) return;
         o.pontos = o.pontos.filter((x) => x.id !== p.id);
         return irPara("obra");
       }

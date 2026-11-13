@@ -671,3 +671,8 @@ body.com-camera { overflow: hidden; }
 .espaco-barra { height: 10px; border-radius: 5px; background: #e2e8f0; overflow: hidden; }
 .espaco-barra i { display: block; height: 100%; background: #16a34a; border-radius: 5px; }
 #espaco { display: flex; flex-direction: column; gap: 8px; }
+
+/* serviços da obra sem ponto */
+.ponto-geral { border: 1.5px dashed #94a3b8; background: #f8fafc; text-align: left; margin-bottom: 4px; }
+.ponto-geral .ponto-nome small { font-weight: 500; color: #64748b; }
+.faixa-geral { margin: 0; background: #f1f5f9; color: #334155; line-height: 1.4; }

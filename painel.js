@@ -319,7 +319,7 @@
           <div class="info">
             <span>Cidade: <b>${esc(o.municipio || "—")}</b></span>
             <span>Supervisor: <b>${esc(o.supervisor_nome || "—")}</b></span>
-            <span>Pontos: <b>${o.pontos.length}</b></span>
+            <span>Pontos: <b>${M.pontosReais(o.pontos).length}</b></span>
             <span>Data de execução: <b>${dias.length ? M.fmtDia(dias[dias.length - 1]) : "—"}</b></span>
             <span>Alterada em: <b>${M.fmtHora(o.atualizada_em)}</b></span>
           </div>

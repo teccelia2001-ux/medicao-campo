@@ -88,9 +88,14 @@
       us: p.itens.reduce((t, i) => t + numero(i.quantidade) * i.us, 0),
     };
   }
-  /** pontos em ordem de número (P1, P2 ... P10), como saem na medição */
-  const ordenarPontos = (pontos) => [...pontos].sort((a, b) =>
-    String(a.nome || "").localeCompare(String(b.nome || ""), "pt-BR", { numeric: true, sensitivity: "base" }));
+  /** "Serviços da obra (sem ponto)": fica guardado como um ponto marcado com `geral` e soma na obra */
+  const pontosReais = (pontos) => pontos.filter((p) => !p.geral);
+  /** pontos em ordem de número (P1, P2 ... P10), como saem na medição; os serviços gerais por último */
+  const ordenarPontos = (pontos) => [
+    ...pontosReais(pontos).sort((a, b) =>
+      String(a.nome || "").localeCompare(String(b.nome || ""), "pt-BR", { numeric: true, sensitivity: "base" })),
+    ...pontos.filter((p) => p.geral && (p.itens.length || p.fotos.length)),
+  ];
   function totaisObra(o) {
     const todos = o.pontos.flatMap((p) => p.itens);
     return { valor: soma(todos, valorItem), us: todos.reduce((t, i) => t + numero(i.quantidade) * i.us, 0) };
@@ -521,7 +526,7 @@
       obra.municipio && `Cidade: ${obra.municipio}`,
       obra.equipe && `Equipe executora: ${obra.equipe}`,
       supervisor && `Supervisor: ${supervisor}`,
-      `Pontos: ${pontos.length}`,
+      `Pontos: ${pontosReais(pontos).length}`,
     ].filter(Boolean);
     doc.setFont("helvetica", "normal");
     const linhasInfo = doc.splitTextToSize(infos.join("   ·   "), L);
@@ -640,7 +645,7 @@
 
   window.Medicao = {
     SERVICOS: [], POR_ID: new Map(), DEPARTAMENTOS: [], OPERACOES, usarCatalogo, valorUS, anoUS, numero, valorItem, soma,
-    fmtMoeda, fmtNum, fmtQtd, fmtDia, fmtHora, utm, fmtUtm, totaisPonto, totaisObra, ordenarPontos, estrutura, categoria,
+    fmtMoeda, fmtNum, fmtQtd, fmtDia, fmtHora, utm, fmtUtm, totaisPonto, totaisObra, ordenarPontos, pontosReais, estrutura, categoria,
     gerarExcel, gerarPdf, blobParaDataUrl, catalogoGeradoEm: null,
   };
 })();

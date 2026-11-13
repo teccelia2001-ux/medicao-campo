@@ -191,7 +191,7 @@
         id: obra.id, numero: obra.numero, local: obra.local || null, municipio: obra.municipio || null,
         departamento: obra.departamento, equipe: obra.equipe || null, obs: obra.obs || null,
         pontos: obra.pontos, fotos: infos, total: totais.valor, total_us: totais.us,
-        qtd_pontos: obra.pontos.length, criada_em: obra.criada_em, atualizada_em: obra.atualizada_em,
+        qtd_pontos: obra.pontos.filter((p) => !p.geral).length, criada_em: obra.criada_em, atualizada_em: obra.atualizada_em,
       },
     });
     // só marca como enviada se ninguém mexeu na obra enquanto ela subia
