@@ -335,14 +335,19 @@ button:disabled { cursor: default; }
   background: #000;
 }
 .visor-topo { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; color: #fff; padding: 0 4px; }
-.visor-topo small { opacity: 0.7; }
+.visor-topo small { opacity: 0.7; text-align: right; }
+.visor-topo b { white-space: nowrap; }
 .visor-area { position: relative; flex: 1; min-height: 0; display: flex; }
 /* fotos lado a lado; o dedo rola de lado e para em cada foto */
 .visor-fotos {
   flex: 1; min-width: 0; display: flex; overflow-x: auto; overflow-y: hidden;
-  scroll-snap-type: x mandatory; overscroll-behavior-x: contain; scrollbar-width: none; touch-action: pan-x pinch-zoom;
+  scroll-snap-type: x mandatory; overscroll-behavior-x: contain; scrollbar-width: none; touch-action: pan-x;
 }
 .visor-fotos::-webkit-scrollbar { display: none; }
+/* foto aproximada: o dedo arrasta a foto em vez de trocar de foto */
+.visor-fotos.visor-zoom { overflow-x: hidden; touch-action: none; cursor: grab; }
+.visor-quadro { overflow: hidden; }
+.visor-quadro img { transform-origin: center; will-change: transform; }
 .visor-quadro { flex: 0 0 100%; min-width: 0; scroll-snap-align: center; scroll-snap-stop: always; display: flex; align-items: center; justify-content: center; }
 .visor-quadro img { width: 100%; height: 100%; object-fit: contain; user-select: none; -webkit-user-drag: none; }
 .visor-seta {

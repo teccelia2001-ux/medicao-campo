@@ -271,11 +271,122 @@
     }, { passive: true });
     faixa.dataset.posicionar = "1";
     faixa.posicionar = posicionar;
+    ligarZoomVisor(faixa, ids);
+  }
+
+  /* Zoom na foto aberta: pinça com dois dedos, toque duplo (aproxima onde tocou / volta) e,
+     aproximada, um dedo arrasta. No computador: rodinha do mouse, clique duplo e arrastar.
+     Com a foto aproximada a faixa não rola de lado; volta a rolar quando a foto volta ao normal. */
+  function ligarZoomVisor(faixa, ids) {
+    const ZMAX = 6;
+    let z = 1, tx = 0, ty = 0;
+    let gesto = null, toqueAnt = null, arrasto = null;
+    const imgAtual = () => faixa.children[Math.max(0, ids.indexOf(estado.foto?.id))]?.querySelector("img");
+    const caixa = () => faixa.getBoundingClientRect();
+    // ponto relativo ao centro da foto
+    const rel = (x, y) => { const r = caixa(); return { x: x - r.left - r.width / 2, y: y - r.top - r.height / 2 }; };
+    function limitar() {
+      const img = imgAtual(), r = caixa();
+      if (!img) return;
+      // tamanho da imagem de verdade dentro do quadro (object-fit: contain)
+      const prop = img.naturalWidth && img.naturalHeight ? img.naturalWidth / img.naturalHeight : r.width / r.height;
+      const w = Math.min(r.width, r.height * prop), h = Math.min(r.height, r.width / prop);
+      const mx = Math.max(0, (w * z - r.width) / 2), my = Math.max(0, (h * z - r.height) / 2);
+      tx = Math.min(mx, Math.max(-mx, tx));
+      ty = Math.min(my, Math.max(-my, ty));
+    }
+    function aplicar(animar = false) {
+      const img = imgAtual();
+      if (!img) return;
+      if (z <= 1.01) { z = 1; tx = 0; ty = 0; }
+      limitar();
+      img.style.transition = animar ? "transform .2s ease-out" : "none";
+      img.style.transform = z > 1 ? `translate(${tx}px, ${ty}px) scale(${z})` : "";
+      faixa.classList.toggle("visor-zoom", z > 1);
+    }
+    function zoomEm(novo, p, base = { z, tx, ty }, animar = false) {
+      // mantém parado o ponto da foto que está embaixo do dedo (ou do mouse)
+      const nz = Math.min(ZMAX, Math.max(1, novo));
+      tx = p.x - (p.x - base.tx) * (nz / base.z);
+      ty = p.y - (p.y - base.ty) * (nz / base.z);
+      z = nz;
+      aplicar(animar);
+    }
+    function alternar(p) { if (z > 1) { z = 1; aplicar(true); } else zoomEm(2.5, p, { z: 1, tx: 0, ty: 0 }, true); }
+    faixa.zerarZoom = () => { if (z > 1) { z = 1; aplicar(); } };
+
+    const dist = (a, b) => Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+    const meio = (a, b) => rel((a.clientX + b.clientX) / 2, (a.clientY + b.clientY) / 2);
+    faixa.addEventListener("touchstart", (e) => {
+      const t = e.touches;
+      if (t.length === 2) {
+        gesto = { tipo: "pinca", d0: dist(t[0], t[1]), m0: meio(t[0], t[1]), z0: z, tx0: tx, ty0: ty };
+        toqueAnt = null;
+      } else if (t.length === 1) {
+        gesto = z > 1 ? { tipo: "arrasto", x0: t[0].clientX, y0: t[0].clientY, tx0: tx, ty0: ty } : null;
+        // toque duplo
+        const agora = Date.now(), p = { x: t[0].clientX, y: t[0].clientY };
+        if (toqueAnt && agora - toqueAnt.em < 320 && Math.hypot(p.x - toqueAnt.x, p.y - toqueAnt.y) < 40) {
+          e.preventDefault();
+          alternar(rel(p.x, p.y));
+          toqueAnt = null;
+          gesto = null;
+        } else toqueAnt = { ...p, em: agora };
+      }
+    }, { passive: false });
+    faixa.addEventListener("touchmove", (e) => {
+      const t = e.touches;
+      if (gesto?.tipo === "pinca" && t.length === 2) {
+        e.preventDefault();
+        const m = meio(t[0], t[1]);
+        const nz = Math.min(ZMAX, Math.max(1, gesto.z0 * (dist(t[0], t[1]) / gesto.d0)));
+        // aproxima em volta do meio dos dedos e acompanha os dedos andando
+        tx = m.x - (gesto.m0.x - gesto.tx0) * (nz / gesto.z0);
+        ty = m.y - (gesto.m0.y - gesto.ty0) * (nz / gesto.z0);
+        z = nz;
+        aplicar();
+      } else if (gesto?.tipo === "arrasto" && t.length === 1) {
+        e.preventDefault();
+        tx = gesto.tx0 + t[0].clientX - gesto.x0;
+        ty = gesto.ty0 + t[0].clientY - gesto.y0;
+        aplicar();
+        toqueAnt = null;
+      }
+    }, { passive: false });
+    faixa.addEventListener("touchend", (e) => {
+      if (e.touches.length === 1 && z > 1) {
+        // tirou um dos dois dedos: segue arrastando com o que ficou
+        const t = e.touches[0];
+        gesto = { tipo: "arrasto", x0: t.clientX, y0: t.clientY, tx0: tx, ty0: ty };
+      } else if (!e.touches.length) gesto = null;
+    }, { passive: true });
+
+    // computador
+    faixa.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      zoomEm(z * Math.exp(-e.deltaY * 0.0015), rel(e.clientX, e.clientY));
+    }, { passive: false });
+    faixa.addEventListener("dblclick", (e) => { if (!e.sourceCapabilities?.firesTouchEvents) alternar(rel(e.clientX, e.clientY)); });
+    faixa.addEventListener("pointerdown", (e) => {
+      if (e.pointerType !== "mouse" || z <= 1) return;
+      arrasto = { x0: e.clientX, y0: e.clientY, tx0: tx, ty0: ty };
+      faixa.setPointerCapture(e.pointerId);
+    });
+    faixa.addEventListener("pointermove", (e) => {
+      if (!arrasto) return;
+      tx = arrasto.tx0 + e.clientX - arrasto.x0;
+      ty = arrasto.ty0 + e.clientY - arrasto.y0;
+      aplicar();
+    });
+    const soltar = () => { arrasto = null; };
+    faixa.addEventListener("pointerup", soltar);
+    faixa.addEventListener("pointercancel", soltar);
   }
   // girou o celular: continua na mesma foto
   window.addEventListener("resize", () => document.getElementById("visor-fotos")?.posicionar?.());
   function andarFoto(passo) {
     const faixa = document.getElementById("visor-fotos");
+    faixa?.zerarZoom?.();
     if (faixa) faixa.scrollBy({ left: passo * faixa.clientWidth, behavior: "smooth" });
   }
 
@@ -715,7 +826,7 @@
     const idx = Math.max(0, ids.indexOf(f.id));
     const varias = ids.length > 1;
     return `<div class="visor">
-      ${varias ? `<div class="visor-topo"><b id="visor-cont">${idx + 1} de ${ids.length}</b><small>deslize para o lado para ver as outras</small></div>` : ""}
+      <div class="visor-topo">${varias ? `<b id="visor-cont">${idx + 1} de ${ids.length}</b><small>deslize para trocar · toque duplo aproxima</small>` : `<span></span><small>dois dedos ou toque duplo aproxima</small>`}</div>
       <div class="visor-area">
         <div class="visor-fotos" id="visor-fotos">${ids.map((id, k) => `<div class="visor-quadro">
           <img src="${estado.miniaturas.get(id) || ""}" alt="Foto ${k + 1} do ponto" draggable="false"></div>`).join("")}</div>
