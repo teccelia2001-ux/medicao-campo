@@ -83,6 +83,8 @@
       estado.obra.pontos = estado.obra.pontos.filter((x) => x !== saindo);
     }
     await salvarAgora();
+    // outro ponto (ou outra tela): a pesquisa dos serviços lançados começa limpa
+    if (tela !== "ponto" || extra.pontoId !== estado.pontoId) estado.filtroItens = "";
     Object.assign(estado, { tela, busca: "", escolhido: null, qtd: "", arquivo: null }, extra);
     if (tela === "inicio") {
       await recarregarLocais();
@@ -720,11 +722,18 @@
     const p = ponto();
     if (!p) return telaObra();
     const tp = M.totaisPonto(p);
+    // pesquisa nos serviços lançados: código, descrição ou nome curto
+    const termosItens = normalizar(estado.filtroItens || "").split(/\s+/).filter(Boolean);
+    const confere = (i) => !termosItens.length || termosItens.every((x) => normalizar([i.codigo, i.descricao, nomeNaTela(i)].join(" ")).includes(x));
+    const achadosItens = p.itens.filter(confere).length;
+    const pesquisaItens = p.itens.length >= 4 ? `<label class="campo campo-pesquisa campo-pesquisa-itens"><input id="filtro-itens" type="search" value="${esc(estado.filtroItens || "")}" placeholder="Pesquisar serviço lançado: código ou nome" autocomplete="off"></label>
+      ${termosItens.length ? `<small class="sub">${achadosItens ? `${plural(achadosItens, "serviço encontrado", "serviços encontrados")} de ${p.itens.length}` : "Nenhum serviço lançado com essa pesquisa."}</small>` : ""}` : "";
     const secoes = M.OPERACOES.map((op) => {
-      const itens = p.itens.filter((i) => i.operacao === op);
+      const todos = p.itens.filter((i) => i.operacao === op);
+      const itens = todos.filter(confere);
       if (!itens.length) return "";
       return `<section class="bloco">
-        <h2 class="secao secao-${op.toLowerCase()}"><span>${SECAO[op]} · ${itens.length}</span><span>${M.fmtMoeda(M.soma(itens, M.valorItem))}</span></h2>
+        <h2 class="secao secao-${op.toLowerCase()}"><span>${SECAO[op]} · ${itens.length < todos.length ? `${itens.length} de ${todos.length}` : todos.length}</span><span>${M.fmtMoeda(M.soma(todos, M.valorItem))}</span></h2>
         ${itens.map((i) => `<div class="cartao item item-linha">
           <div class="item-nome" title="${esc(i.descricao)}"><b>${esc(nomeNaTela(i))}</b><small>${esc(i.codigo)}</small></div>
           ${campoQtd(i.quantidade, `data-qtd-item="${i.sid}" aria-label="Quantidade de ${esc(nomeNaTela(i))}"`)}
@@ -780,7 +789,8 @@
       </div><div class="ponto-col">
 
       <fieldset class="conjunto" ${soLeitura(o) ? "disabled" : ""}>
-      ${secoes || `<p class="vazio">Nenhum serviço lançado ${p.geral ? "sem ponto" : "neste ponto"}.</p>`}
+      ${pesquisaItens}
+      ${secoes || (termosItens.length ? "" : `<p class="vazio">Nenhum serviço lançado ${p.geral ? "sem ponto" : "neste ponto"}.</p>`)}
       </fieldset>
 
       <section class="cartao dados">
@@ -1689,6 +1699,15 @@
       t.className = !t.value ? "" : obraValida(t.value) ? "valido" : "invalido";
       document.getElementById("dica-numero").textContent =
         t.value && !obraValida(t.value) ? `Tem ${t.value.length} dígitos. Precisa de 8 ou 10.` : "";
+      return;
+    }
+    if (t.id === "filtro-itens") {
+      estado.filtroItens = t.value;
+      const foco = t.selectionStart;
+      render();
+      const novo = document.getElementById("filtro-itens");
+      novo.focus();
+      novo.setSelectionRange(foco, foco);
       return;
     }
     if (t.id === "filtro-ponto") {
